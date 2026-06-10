@@ -1,43 +1,118 @@
 import os
-import sys
-sys.path.insert(0, '/workspace')
+import torch
+import argparse
+from transformers import (
+    AutoTokenizer,
+    AutoModelForCausalLM,
+    BitsAndBytesConfig,
+    TrainingArguments,
+    Trainer,
+    DataCollatorForLanguageModeling
+)
+from mini_dialog_ai.hf_dataset import HFDataProcessor
 
-from mini_dialog_ai.config import ModelConfig
-from mini_dialog_ai.dataset import DataProcessor
-from mini_dialog_ai.trainer import QwenMoEModel, Trainer
+os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 
 def main():
-    print("=== 初始化训练环境 ===")
+    parser = argparse.ArgumentParser(description="Train Qwen MoE Dialog Model")
+    parser.add_argument("--model_name", type=str, default="Qwen/Qwen2-MoE-2.7B-Instruct", help="Model name")
+    parser.add_argument("--dataset_name", type=str, default="HuggingFaceH4/ultrachat_200k", help="Dataset name")
+    parser.add_argument("--output_dir", type=str, default="./models/qwen-moe-dialog", help="Output directory")
+    parser.add_argument("--batch_size", type=int, default=2, help="Batch size")
+    parser.add_argument("--max_length", type=int, default=512, help="Max sequence length")
+    parser.add_argument("--num_epochs", type=int, default=3, help="Number of epochs")
+    parser.add_argument("--learning_rate", type=float, default=2e-5, help="Learning rate")
+    parser.add_argument("--quantization", action="store_true", help="Use 4-bit quantization")
+    parser.add_argument("--device", type=str, default="auto", help="Device to use")
+    args = parser.parse_args()
     
-    print("\n1. 生成示例数据集...")
-    data_path = "data/train_data.json"
-    DataProcessor.generate_sample_data(data_path, num_samples=50)
+    print(f"Loading model: {args.model_name}")
     
-    print("\n2. 加载模型和tokenizer...")
-    qwen_model = QwenMoEModel(device=ModelConfig.DEVICE)
+    quantization_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16
+    ) if args.quantization else None
     
-    print("\n3. 创建数据处理器...")
-    processor = DataProcessor(qwen_model.tokenizer)
-    train_dataloader = processor.create_dataloader(
-        data_path,
-        batch_size=ModelConfig.BATCH_SIZE,
-        max_length=ModelConfig.MAX_LENGTH
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name, trust_remote_code=True)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    
+    model = AutoModelForCausalLM.from_pretrained(
+        args.model_name,
+        quantization_config=quantization_config,
+        device_map=args.device,
+        trust_remote_code=True,
+        low_cpu_mem_usage=True
     )
     
-    print("\n4. 开始训练...")
-    trainer = Trainer(qwen_model.model, qwen_model.tokenizer, device=ModelConfig.DEVICE)
-    trainer.train(train_dataloader, num_epochs=ModelConfig.NUM_EPOCHS)
+    print(f"Loading dataset: {args.dataset_name}")
+    dataset = HFDataProcessor.load_text_dataset(args.dataset_name, tokenizer, args.max_length)
+    dataloader = HFDataProcessor.create_dataloader(dataset, batch_size=args.batch_size)
     
-    print("\n5. 保存模型...")
-    output_dir = "models/trained_model"
-    trainer.save_model(output_dir)
+    print(f"Dataset size: {len(dataset)}")
     
-    print("\n=== 训练完成 ===")
+    training_args = TrainingArguments(
+        output_dir=args.output_dir,
+        per_device_train_batch_size=args.batch_size,
+        num_train_epochs=args.num_epochs,
+        learning_rate=args.learning_rate,
+        gradient_accumulation_steps=4,
+        fp16=True,
+        logging_steps=10,
+        save_strategy="epoch",
+        report_to="none",
+        remove_unused_columns=False,
+    )
     
-    print("\n=== 测试对话 ===")
-    test_prompt = "你好！"
-    response = qwen_model.generate_response(test_prompt)
-    print(f"用户: {test_prompt}")
+    data_collator = DataCollatorForLanguageModeling(
+        tokenizer=tokenizer,
+        mlm=False
+    )
+    
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=dataset,
+        data_collator=data_collator
+    )
+    
+    print("Starting training...")
+    trainer.train()
+    
+    print(f"Saving model to {args.output_dir}")
+    model.save_pretrained(args.output_dir)
+    tokenizer.save_pretrained(args.output_dir)
+    
+    print("Training complete!")
+    
+    test_inference(model, tokenizer)
+
+def test_inference(model, tokenizer):
+    print("\nTesting inference...")
+    model.eval()
+    
+    messages = [
+        {"role": "system", "content": "你是一个友好的助手。"},
+        {"role": "user", "content": "你好！"}
+    ]
+    
+    text = tokenizer.apply_chat_template(messages, tokenize=False)
+    inputs = tokenizer(text, return_tensors="pt").to(model.device)
+    
+    with torch.no_grad():
+        outputs = model.generate(
+            **inputs,
+            max_length=512,
+            temperature=0.7,
+            top_p=0.9,
+            do_sample=True,
+            pad_token_id=tokenizer.eos_token_id
+        )
+    
+    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    response = response.replace(text, "").strip()
     print(f"AI: {response}")
 
 if __name__ == "__main__":
