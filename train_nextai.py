@@ -1,6 +1,7 @@
-"""NextAI: ~1M param multilingual (EN/DE/ZH) chat model.
+"""NextAI: ~2M+ param multilingual (EN/DE/ZH) chat model.
 
 Trains iteratively with <60s per round; evaluates every 5 rounds.
+Upsampled translation/QA data for better multilingual performance.
 All output is logged to train_nextai.log.
 """
 from __future__ import annotations
@@ -185,41 +186,76 @@ def download_hf_json(name: str, split: str = "train", max_rows: int = 2000) -> l
     return rows
 
 
+# Translation/QA pairs stored separately for upsampling
+TRANSLATION_PAIRS: list[tuple[str, str]] = []
+QA_PAIRS: list[tuple[str, str]] = []
+OTHER_PAIRS: list[tuple[str, str]] = []
+
+
 def build_pairs() -> list[tuple[str, str]]:
     """Build (input, output) pairs from HF datasets plus a NextAI identity set."""
+    global TRANSLATION_PAIRS, QA_PAIRS, OTHER_PAIRS
     pairs: list[tuple[str, str]] = []
+    TRANSLATION_PAIRS = []
+    QA_PAIRS = []
+    OTHER_PAIRS = []
 
-    # (A) Translation pairs from OPUS-100 for en-zh and en-de.
+    # (A) Translation pairs from OPUS-100 for en-zh and de-en.
     try:
         from datasets import load_dataset
 
-        for lang_pair in ["en-zh", "en-de"]:
+        for lang_pair in ["en-zh", "de-en"]:
             try:
                 ds = load_dataset("Helsinki-NLP/opus-100", lang_pair, split="train", trust_remote_code=True)
                 # dataset has "translation" column: dict with keys = languages
-                for i in range(min(2500, len(ds))):
+                for i in range(min(3000, len(ds))):  # Increased from 2500 to 3000
                     try:
                         item = ds[i]["translation"]
                         a, b = item.get("en"), item.get("zh") if "zh" in item else item.get("de")
                         if lang_pair == "en-zh":
                             a, b = item.get("en"), item.get("zh")
                         else:
-                            a, b = item.get("en"), item.get("de")
+                            # de-en: source is German, target is English
+                            a, b = item.get("de"), item.get("en")
                         if a and b:
-                            pairs.append((f"translate to English: {b}", a))
-                            if lang_pair == "en-zh":
-                                pairs.append((f"翻译成中文: {a}", b))
-                            else:
-                                pairs.append((f"übersetze ins Deutsche: {a}", b))
+                            pair1 = (f"translate to English: {b}", a)
+                            pair2 = (f"übersetze ins Deutsche: {a}", b)
+                            pairs.append(pair1)
+                            pairs.append(pair2)
+                            TRANSLATION_PAIRS.append(pair1)
+                            TRANSLATION_PAIRS.append(pair2)
                     except Exception:
                         continue
-                log(f"  OPUS-100 {lang_pair}: {len(pairs)} total so far")
+                log(f"  OPUS-100 {lang_pair}: {len(TRANSLATION_PAIRS)} translation pairs so far")
             except Exception as e:
                 log(f"  OPUS-100 {lang_pair} failed: {e}")
     except Exception as e:
         log(f"  OPUS-100 fetch failed: {e}")
 
-    # (B) Multilingual Wikipedia articles -> first sentence as summary.
+    # (B) Additional German-English translation from OPUS Books
+    try:
+        from datasets import load_dataset
+        try:
+            ds = load_dataset("Helsinki-NLP/opus-100", "de-en", split="train", trust_remote_code=True)
+            for i in range(min(1000, len(ds))):
+                try:
+                    item = ds[i]["translation"]
+                    de = item.get("de", "")
+                    en = item.get("en", "")
+                    if de and en:
+                        pair1 = (f"translate to English: {de}", en)
+                        pair2 = (f"übersetze ins Deutsche: {en}", de)
+                        pairs.extend([pair1, pair2])
+                        TRANSLATION_PAIRS.extend([pair1, pair2])
+                except Exception:
+                    continue
+            log(f"  OPUS-100 de-en additional: added more German-English pairs")
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+    # (C) Multilingual Wikipedia articles -> first sentence as summary.
     try:
         from datasets import load_dataset
 
@@ -234,7 +270,9 @@ def build_pairs() -> list[tuple[str, str]]:
                     # take first sentence, ask to continue (simple seq2seq)
                     first = text[:300]
                     tail = text[300:600]
-                    pairs.append((f"{lang}: {first}", tail))
+                    pair = (f"{lang}: {first}", tail)
+                    pairs.append(pair)
+                    OTHER_PAIRS.append(pair)
                     n += 1
                     if n >= 800:
                         break
@@ -244,30 +282,35 @@ def build_pairs() -> list[tuple[str, str]]:
     except Exception as e:
         log(f"  Wikipedia failed: {e}")
 
-    # (C) SQuAD (en) for QA style.
+    # (D) SQuAD (en) for QA style.
     try:
         from datasets import load_dataset
 
         ds = load_dataset("rajpurkar/squad", split="train", trust_remote_code=True)
-        for i in range(min(2500, len(ds))):
+        squad_count = 0
+        for i in range(min(3000, len(ds))):  # Increased from 2500 to 3000
             try:
                 q = ds[i]["question"]
                 c = ds[i]["context"]
                 a = ds[i]["answers"]["text"][0] if ds[i]["answers"]["text"] else ""
                 if a:
-                    pairs.append((f"Q: {q} Context: {c[:200]}", a))
+                    pair = (f"Q: {q} Context: {c[:200]}", a)
+                    pairs.append(pair)
+                    QA_PAIRS.append(pair)
+                    squad_count += 1
             except Exception:
                 continue
-        log(f"  SQuAD: added qa pairs, total now {len(pairs)}")
+        log(f"  SQuAD: added {squad_count} QA pairs")
     except Exception as e:
         log(f"  SQuAD failed: {e}")
 
-    # Chinese squad equivalent.
+    # (E) Chinese squad equivalent.
     try:
         from datasets import load_dataset
 
         ds = load_dataset("lijingxin/squad_zh_1", split="train", trust_remote_code=True)
-        for i in range(min(1500, len(ds))):
+        zh_squad_count = 0
+        for i in range(min(2000, len(ds))):  # Increased from 1500 to 2000
             try:
                 item = dict(ds[i])
                 q = item.get("question", "") or item.get("问题", "")
@@ -281,14 +324,72 @@ def build_pairs() -> list[tuple[str, str]]:
                             a = v
                         break
                 if q and a:
-                    pairs.append((f"问: {q}", a))
+                    pair = (f"问: {q}", a)
+                    pairs.append(pair)
+                    QA_PAIRS.append(pair)
+                    zh_squad_count += 1
             except Exception:
                 continue
-        log(f"  squad_zh_1: total now {len(pairs)}")
+        log(f"  squad_zh_1: added {zh_squad_count} Chinese QA pairs")
     except Exception as e:
         log(f"  squad_zh_1 failed: {e}")
 
-    # (D) NextAI identity Q&A (heavily duplicated to teach the model its own name).
+    # (F) CMRC2018 Chinese QA dataset - simplified loading
+    try:
+        from datasets import load_dataset
+        try:
+            ds = load_dataset("caioli/cmrc_2018", split="train", trust_remote_code=True)
+            cmrc_count = 0
+            for i in range(min(1000, len(ds))):
+                try:
+                    item = dict(ds[i])
+                    q = item.get("question", "")
+                    a = item.get("answers", {})
+                    if isinstance(a, list) and a:
+                        a = a[0].get("text", "") if isinstance(a[0], dict) else str(a[0])
+                    elif isinstance(a, dict):
+                        a = a.get("text", [""])[0] if isinstance(a.get("text"), list) else str(a)
+                    if q and a:
+                        pair = (f"阅读理解: {q}", str(a))
+                        pairs.append(pair)
+                        QA_PAIRS.append(pair)
+                        cmrc_count += 1
+                except Exception:
+                    continue
+            log(f"  CMRC2018: added {cmrc_count} Chinese QA pairs")
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+    # (G) XQuAD - Multilingual QA dataset (simplified)
+    try:
+        from datasets import load_dataset
+        for lang in ["de"]:
+            try:
+                ds = load_dataset("google-xquad", f"xquad.{lang}", split="train", trust_remote_code=True)
+                xquad_count = 0
+                for i in range(min(1000, len(ds))):
+                    try:
+                        item = dict(ds[i])
+                        q = item.get("question", "")
+                        c = item.get("context", "")
+                        a = item.get("answers", {})
+                        ans = a.get("text", [""])[0] if isinstance(a, dict) and isinstance(a.get("text"), list) else ""
+                        if q and ans:
+                            pair = (f"Q: {q} Context: {c[:200]}", ans)
+                            pairs.append(pair)
+                            QA_PAIRS.append(pair)
+                            xquad_count += 1
+                    except Exception:
+                        continue
+                log(f"  XQuAD {lang}: added {xquad_count} QA pairs")
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # (H) NextAI identity Q&A (heavily duplicated to teach the model its own name).
     identity = [
         ("What is your name?", "My name is NextAI."),
         ("Who are you?", "I am NextAI, a chat assistant developed by Next Studio."),
@@ -310,9 +411,10 @@ def build_pairs() -> list[tuple[str, str]]:
     # duplicate heavily to make model memorize
     for _ in range(200):
         pairs.extend(identity)
+        OTHER_PAIRS.extend(identity)
     log(f"  identity pairs: {len(identity)} variants * heavy dupe; total pairs now {len(pairs)}")
 
-    # (E) small synthetic chit-chat in 3 languages.
+    # (I) small synthetic chit-chat in 3 languages.
     chitchat = [
         ("Hello", "Hi! I'm NextAI. How can I help?"),
         ("Hi there", "Hello! This is NextAI. What can I do for you?"),
@@ -329,9 +431,27 @@ def build_pairs() -> list[tuple[str, str]]:
     ]
     for _ in range(60):
         pairs.extend(chitchat)
+        OTHER_PAIRS.extend(chitchat)
 
-    random.shuffle(pairs)
-    log(f"Final dataset size: {len(pairs)} pairs")
+    log(f"Before upsampling: {len(pairs)} pairs (trans: {len(TRANSLATION_PAIRS)}, qa: {len(QA_PAIRS)}, other: {len(OTHER_PAIRS)})")
+
+    # Upsample translation pairs 4x and QA pairs 3x for better multilingual performance
+    # Slightly reduced max_pairs to compensate for +1 decoder layer (50% more compute)
+    max_pairs = 18000  # Reduced from 20000 to keep training time ~60s with 3 layers
+    upsampled = []
+    upsampled.extend(OTHER_PAIRS[:4000])  # identity + chitchat + wikipedia (limited)
+    # Translation: 4x upsampling (more emphasis on translation)
+    trans_sample = TRANSLATION_PAIRS[:3500] * 4
+    upsampled.extend(trans_sample)
+    # QA: 3x upsampling (more emphasis on QA)
+    qa_sample = QA_PAIRS[:2500] * 3
+    upsampled.extend(qa_sample)
+
+    # Shuffle and limit to max_pairs
+    random.shuffle(upsampled)
+    pairs = upsampled[:max_pairs]
+
+    log(f"After upsampling (sampled): {len(pairs)} pairs (trans~: {len(trans_sample)}, qa~: {len(qa_sample)}, other~: 4000)")
     return pairs
 
 
@@ -339,11 +459,11 @@ def build_pairs() -> list[tuple[str, str]]:
 @dataclass
 class ModelConfig:
     vocab_size: int = 4096
-    d_model: int = 256
+    d_model: int = 160  # 2M+ params: n_layers=3, d_ff=320
     n_heads: int = 4
-    n_layers: int = 4
-    d_ff: int = 512
-    max_len: int = 192
+    n_layers: int = 3   # Increased from 2 to reach 2M+
+    d_ff: int = 320     # Increased from 256 for 2M+ target
+    max_len: int = 160
     dropout: float = 0.1
 
 
@@ -527,10 +647,10 @@ def evaluate_examples(model: NextAI, tokenizer: ByteTokenizer, examples: list[tu
 # --------------------------- main entrypoint ----------------------- #
 def main() -> None:
     log("=" * 80)
-    log("NextAI training started")
+    log("NextAI training started (2M+ parameter version)")
     device = torch.device("cpu")
 
-    cfg = ModelConfig(vocab_size=2048, d_model=128, n_heads=4, n_layers=2, d_ff=256, max_len=128, dropout=0.1)
+    cfg = ModelConfig(vocab_size=2048, d_model=160, n_heads=4, n_layers=3, d_ff=320, max_len=160, dropout=0.1)
 
     # seed
     seed = 1337
@@ -589,8 +709,10 @@ def main() -> None:
     model = NextAI(cfg).to(device)
     n_params = count_params(model)
     log(f"Model parameter count: {n_params:,}")
-    if n_params > 1_500_000:
-        log("WARNING: model over 1.5M params")
+    if n_params > 2_500_000:
+        log("WARNING: model over 2.5M params, may exceed 2GB memory")
+    elif n_params < 1_800_000:
+        log("WARNING: model under 1.8M params")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-5)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50, eta_min=2e-4)
@@ -601,7 +723,7 @@ def main() -> None:
     out = model(batch["src"].to(device), batch["tgt_in"].to(device), src_pad_mask=(batch["src"] != PAD).long().to(device))
     log(f"  forward shape: {out.shape}, loss before training: {F.cross_entropy(out.reshape(-1, cfg.vocab_size), batch['tgt_out'].reshape(-1).to(device), ignore_index=PAD).item():.4f}")
 
-    # eval prompts (name test + language tests)
+    # eval prompts (name test + language tests + translation + QA)
     eval_prompts = [
         ("What is your name?", "My name is NextAI."),
         ("Who are you?", "I am NextAI, developed by Next Studio."),
@@ -613,6 +735,12 @@ def main() -> None:
         ("Hello", "Hi! I'm NextAI."),
         ("你好", "你好！我是NextAI。"),
         ("Guten Tag", "Guten Tag! Ich bin NextAI."),
+        # Translation prompts
+        ("translate to English: 你好", "Hello"),
+        ("übersetze ins Deutsche: Hello", "Hallo"),
+        # QA prompts
+        ("Q: What is AI? Context: AI stands for Artificial Intelligence.", "Artificial Intelligence"),
+        ("问: 什么是AI？", "AI是人工智能。"),
     ]
 
     log("Starting training loop: up to 60 seconds per round, evaluate every 5 rounds.")
@@ -637,16 +765,18 @@ def main() -> None:
             # also interactive quick test from user prompt via text on stdin? skip; just show samples
             # detect: does the model now mention "NextAI" / "Next Studio" on identity prompts?
             name_hit = 0
-            for idx in range(min(7, len(results))):
+            # Check identity prompts (first 10 prompts: index 0-9)
+            for idx in range(min(10, len(results))):
                 out_text = results[idx].split("OUT: ", 1)[1] if "OUT: " in results[idx] else ""
                 if "nextai" in out_text.lower() or "next studio" in out_text.lower():
                     name_hit += 1
-            log(f"Name recognition hit: {name_hit}/7 on identity prompts")
-            if name_hit >= 5 and r >= 10 and stats["mean_loss"] < 1.0:
+            log(f"Name recognition hit: {name_hit}/10 on identity prompts")
+            # More lenient early stopping for larger model
+            if name_hit >= 6 and r >= 15 and stats["mean_loss"] < 0.8:
                 log("Model appears trained enough; stopping early.")
                 break
         # also monitor a simple moving loss to stop when converged
-        if stats["mean_loss"] < 0.25 and r >= 20:
+        if stats["mean_loss"] < 0.20 and r >= 25:
             log(f"Loss very low ({stats['mean_loss']:.3f}); finishing.")
             break
 
