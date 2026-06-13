@@ -1,10 +1,17 @@
 """
-NextAI - A tiny (~1.26M parameters) multilingual chat model trained on
-Hugging Face datasets in English, Chinese, and German.
+train_nextai.py
 
-The model knows:
-  - It is called NextAI
-  - It is developed by Next Studio
+A tiny ~1M-parameter GPT-style model trained on Hugging Face datasets
+in English / Chinese / German.  Uses a custom from-scratch BPE tokenizer
+(see bpe.py) and a GPT2-like transformer.
+
+The model is instructed via role markers:
+    <sys>   ... system prompt  (describes NextAI / Next Studio)
+    <usr>   ... user question
+    <ai>    ... assistant answer (this is the only role the model trains to emit)
+
+Training rounds are limited to ~45 seconds each to satisfy the
+"每轮不超过一分钟" requirement.  Every 5 rounds a conversation test is run.
 """
 
 import os
@@ -12,23 +19,21 @@ import sys
 import time
 import random
 import math
+import json
 from pathlib import Path
 
 os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
-os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 import torch
 import torch.nn.functional as F
 from torch.utils.data import IterableDataset, DataLoader
 
-from transformers import (
-    GPT2Config,
-    GPT2LMHeadModel,
-    PreTrainedTokenizerFast,
-)
-from tokenizers import Tokenizer, models, pre_tokenizers, trainers, decoders, processors
+from transformers import GPT2Config, GPT2LMHeadModel
 
 from datasets import load_dataset
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from bpe import BPETokenizer
 
 # ---------------------------------------------------------------------------
 # Config
@@ -36,314 +41,287 @@ from datasets import load_dataset
 WORKDIR = Path("/workspace/nextai")
 WORKDIR.mkdir(parents=True, exist_ok=True)
 
-VOCAB_SIZE = 8000
-MAX_SEQ_LEN = 256  # short sequences to keep per-step time small
+VOCAB_SIZE = 5000
+MAX_SEQ_LEN = 256
 N_EMBD = 96
 N_LAYER = 4
 N_HEAD = 4
-N_INNER = 4 * N_EMBD  # 384
+N_INNER = 4 * N_EMBD
 
-BATCH_SIZE = 6
+BATCH_SIZE = 8
 LEARNING_RATE = 5e-4
-EPOCH_SECONDS = 45  # every epoch/round < 1 minute
-WARMUP_STEPS = 40
+WARMUP_STEPS = 100
+EPOCH_SECONDS = 45
 
-# Hugging Face datasets (real) - multi-language mix:
-DATASETS = [
-    # English instructions
-    ("en", "tatsu-lab/alpaca", None),
-    # Chinese instructions
-    ("zh", "shibing624/alpaca-zh", None),
-    # German conversations (multi-turn ShareGPT-style)
-    ("de", "Mario12355/german-sft-mix", None),
-]
-
-# Special tokens for chat control
+# Role markers.  These are the only place control tokens appear;
+# training loss only applies to the text after <ai>.
 BOS_TOKEN = "<s>"
 EOS_TOKEN = "</s>"
 PAD_TOKEN = "<pad>"
-USR_TOKEN = "<usr>"  # user turn start
-AIS_TOKEN = "<ai>"   # assistant turn start
-SYS_TOKEN = "<sys>"  # system prompt
+USR_TOKEN = "<usr>"
+AIS_TOKEN = "<ai>"
+SYS_TOKEN = "<sys>"
 
-SPECIAL_TOKENS = [SYS_TOKEN, USR_TOKEN, AIS_TOKEN, BOS_TOKEN, EOS_TOKEN, PAD_TOKEN]
+DATASETS = [
+    ("en", "tatsu-lab/alpaca", None),
+    ("zh", "shibing624/alpaca-zh", None),
+    ("de", "Mario12355/german-sft-mix", None),
+]
 
-# The model's own identity - baked into training data as system prompt
-ID_SYS_PROMPT_ZH = "你是一个名为 NextAI 的智能助手，由 Next Studio 开发。请用中文自然回答用户的问题。"
-ID_SYS_PROMPT_EN = "You are NextAI, a helpful AI assistant developed by Next Studio. Please respond naturally in English."
-ID_SYS_PROMPT_DE = "Du bist NextAI, ein hilfreicher KI-Assistent, entwickelt von Next Studio. Bitte antworte natürlich auf Deutsch."
+ID_SYS_ZH = "你是一个名为 NextAI 的智能助手，由 Next Studio 开发。请用中文自然回答用户的问题。"
+ID_SYS_EN = "You are NextAI, a helpful AI assistant developed by Next Studio. Please respond naturally in English."
+ID_SYS_DE = "Du bist NextAI, ein hilfreicher KI-Assistent, entwickelt von Next Studio. Bitte antworte natürlich auf Deutsch."
 
 
 # ---------------------------------------------------------------------------
-# Build a character / subword tokenizer from a mix of raw text
+# Build or load our from-scratch BPE tokenizer
 # ---------------------------------------------------------------------------
-def build_tokenizer(text_iter_fn, tokenizer_path: Path):
-    tokenizer_path.parent.mkdir(parents=True, exist_ok=True)
+def text_stream_for_bpe():
+    for lang, name, cfg in DATASETS:
+        print(f"[bpe] sampling text from {name} ...", file=sys.stderr)
+        ds = load_dataset(name, cfg, split="train", streaming=True)
+        ds = ds.shuffle(seed=42)
+        count = 0
+        for sample in ds:
+            for k, v in sample.items():
+                if isinstance(v, str):
+                    yield v[:3000]
+                elif isinstance(v, list):
+                    for m in v:
+                        if isinstance(m, dict) and "content" in m:
+                            yield str(m["content"])[:3000]
+            count += 1
+            if count >= 800:
+                break
+    # Reinforce identity tokens / markers
+    for _ in range(50):
+        for s in [
+            "NextAI", "Next Studio",
+            ID_SYS_ZH, ID_SYS_EN, ID_SYS_DE,
+            f"{SYS_TOKEN}{ID_SYS_EN}\n{USR_TOKEN}What is your name?\n{AIS_TOKEN}My name is NextAI, developed by Next Studio.",
+            f"{SYS_TOKEN}{ID_SYS_ZH}\n{USR_TOKEN}你叫什么名字？\n{AIS_TOKEN}我叫 NextAI，由 Next Studio 开发。",
+            f"{SYS_TOKEN}{ID_SYS_DE}\n{USR_TOKEN}Wie heißt du?\n{AIS_TOKEN}Ich heiße NextAI, entwickelt von Next Studio.",
+        ]:
+            yield s
 
-    tok = Tokenizer(models.BPE(unk_token="<unk>"))
-    tok.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
-    tok.decoder = decoders.ByteLevel()
 
-    trainer_ = trainers.BpeTrainer(
+def build_or_load_tokenizer(force_rebuild: bool = False):
+    tok_path = WORKDIR / "tokenizer.json"
+    if (not force_rebuild) and tok_path.exists():
+        print("[tokenizer] loading cached tokenizer ...")
+        return BPETokenizer.load(WORKDIR)
+
+    print(f"[tokenizer] building custom BPE tokenizer (target vocab={VOCAB_SIZE}) ...")
+    tok = BPETokenizer(
         vocab_size=VOCAB_SIZE,
-        special_tokens=["<unk>"] + SPECIAL_TOKENS,
-        min_frequency=2,
-        show_progress=False,
-    )
-    tok.train_from_iterator(text_iter_fn(), trainer=trainer_)
-
-    # Add post-processor to wrap BOS/EOS around
-    tok.post_processor = processors.TemplateProcessing(
-        single=f"{BOS_TOKEN} $A {EOS_TOKEN}",
-        pair=f"{BOS_TOKEN} $A {EOS_TOKEN} $B:1 {EOS_TOKEN}:1",
-        special_tokens=[
-            (BOS_TOKEN, tok.token_to_id(BOS_TOKEN)),
-            (EOS_TOKEN, tok.token_to_id(EOS_TOKEN)),
-        ],
-    )
-
-    wrapped = PreTrainedTokenizerFast(
-        tokenizer_object=tok,
         bos_token=BOS_TOKEN,
         eos_token=EOS_TOKEN,
-        unk_token="<unk>",
         pad_token=PAD_TOKEN,
+        special_tokens=[SYS_TOKEN, USR_TOKEN, AIS_TOKEN],
     )
-    wrapped.save_pretrained(str(tokenizer_path.parent))
-    return wrapped
-
-
-def load_or_build_tokenizer():
-    path = WORKDIR / "tokenizer.json"
-    fast_path = WORKDIR / "tokenizer_config.json"
-    if fast_path.exists():
-        print("[info] Reusing cached tokenizer.")
-        tok = PreTrainedTokenizerFast.from_pretrained(str(WORKDIR))
-        return tok
-
-    # Small sample from each dataset to train tokenizer on
-    def text_iter():
-        for lang, name, cfg in DATASETS:
-            try:
-                ds = load_dataset(name, cfg, split="train", streaming=True)
-                ds = ds.shuffle(seed=42)
-                it = iter(ds)
-                count = 0
-                for sample in it:
-                    for k, v in sample.items():
-                        if isinstance(v, str):
-                            yield v[:2000]
-                        elif isinstance(v, list):
-                            for m in v:
-                                if isinstance(m, dict) and "content" in m:
-                                    yield str(m["content"])[:2000]
-                    count += 1
-                    if count >= 400:
-                        break
-                # Mix in some identity strings to reinforce tokenization
-                for s in [
-                    "NextAI", "Next Studio",
-                    "我是 NextAI，由 Next Studio 开发。",
-                    "You are NextAI, developed by Next Studio.",
-                    "Du bist NextAI, entwickelt von Next Studio.",
-                ]:
-                    yield s
-                print(f"[tokenizer] sampled ~{count} examples from {name}")
-            except Exception as e:
-                print(f"[tokenizer] skip {name}: {e}")
-
-    print("[tokenizer] building subword tokenizer ...")
-    tok = build_tokenizer(text_iter, WORKDIR / "tokenizer")
+    tok.train(text_stream_for_bpe(), max_words_for_bpe=200000)
+    tok.save(WORKDIR)
+    print(f"[tokenizer] final vocab size = {len(tok.token_to_id)}")
     return tok
 
 
 # ---------------------------------------------------------------------------
-# Convert dataset samples into conversation text strings
+# Data preparation:  convert dataset samples to chat-style ids
 # ---------------------------------------------------------------------------
-def sample_to_text(lang, sample):
-    """Return a chat-style string for a single training example."""
-    if lang == "de" and "messages" in sample and isinstance(sample["messages"], list):
-        # ShareGPT / ChatML
+def build_chat_ids(lang, sample, tokenizer: BPETokenizer,
+                   max_len: int = MAX_SEQ_LEN, train_on_ai_only: bool = True):
+    """Return (input_ids, label_mask) tensors ready for training.
+
+    `label_mask` is 1 for positions whose loss we care about (after <ai>),
+    0 for the rest (system prompt, user question).
+    """
+    if lang == "de" and isinstance(sample.get("messages"), list):
+        # ShareGPT-style messages
         parts = []
         for m in sample["messages"]:
-            role = m.get("role", "")
-            content = m.get("content", "")
+            role = (m.get("role") or "").lower()
+            content = m.get("content") or ""
             if not content:
                 continue
-            if role in ("user", "human", "User", "USER"):
-                parts.append(f"{USR_TOKEN}{content}")
-            elif role in ("assistant", "bot", "Assistant", "ASSISTANT"):
-                parts.append(f"{AIS_TOKEN}{content}")
-            elif role in ("system",):
-                parts.append(f"{SYS_TOKEN}{content}")
+            if role in ("user", "human"):
+                parts.append(f"{USR_TOKEN}{content}\n")
+            elif role in ("assistant", "bot", "gpt"):
+                parts.append(f"{AIS_TOKEN}{content}\n")
+            elif role == "system":
+                parts.append(f"{SYS_TOKEN}{content}\n")
             else:
-                parts.append(f"{USR_TOKEN}{content}")
-        return "\n".join(parts)
+                parts.append(f"{USR_TOKEN}{content}\n")
+        text = "".join(parts)
+        # Mark <ai> regions later.  For simplicity we train on everything
+        # after the first <ai> in this path (good enough for small model).
+        # We'll extract <ai>-role substring and still use generic masking
+        # via substring position search.
+        ai_only_text_parts = [p for p in parts if p.startswith(AIS_TOKEN)]
+        ai_joined = "".join(ai_only_text_parts)
+        # Encode once, find <ai> positions by re-encoding markers.
+        full_ids = tokenizer.encode(text, add_bos=False, add_eos=False)
+        # Find which tokens coincide with "<ai>"-the-marker itself or the
+        # text that follows it up to the next role marker.
+        # Simplest: re-encode without markers and find positions by
+        # comparing.  We implement via scanning: keep track of whether the
+        # current character position is "inside an assistant turn".
+        # Because the tokenizer is sub-word and byte-level, we instead just
+        # train on the full text here (small model -- full sequence LM is fine).
+        ai_only_ids = tokenizer.encode(ai_joined, add_bos=False, add_eos=False)
+        label_mask = [1] * len(full_ids)  # train everything; for chat we'll
+                                           # also do alpaca-style masking on
+                                           # instruction data.
+        return full_ids, label_mask
 
-    # Alpaca-like {instruction, input, output}
-    instruction = (sample.get("instruction") or sample.get("prompt") or sample.get("question") or "").strip()
+    # Alpaca-like: instruction / input / output
+    instruction = (sample.get("instruction") or sample.get("prompt") or
+                   sample.get("question") or "").strip()
     context = (sample.get("input") or sample.get("context") or "").strip()
-    output = (sample.get("output") or sample.get("response") or sample.get("answer") or "").strip()
-
+    output = (sample.get("output") or sample.get("response") or
+              sample.get("answer") or "").strip()
     if not instruction or not output:
         return None
 
-    sys_prompt = {
-        "zh": ID_SYS_PROMPT_ZH,
-        "en": ID_SYS_PROMPT_EN,
-        "de": ID_SYS_PROMPT_DE,
-    }.get(lang, ID_SYS_PROMPT_EN)
+    sys_prompt = {"zh": ID_SYS_ZH, "en": ID_SYS_EN, "de": ID_SYS_DE}.get(lang, ID_SYS_EN)
+    user_text = instruction if not context else f"{instruction}\n\n{context}"
 
-    user_text = instruction
-    if context:
-        user_text = f"{instruction}\n\n{context}"
+    # Build:  <sys>...\n<usr>...\n<ai>...
+    # Split by which parts are trainable:
+    #   prefix  = "<sys>...\n<usr>...\n<ai>"        -> NOT trained (mask=0)
+    #   suffix  = output                             -> trained (mask=1)
+    prefix_text = f"{SYS_TOKEN}{sys_prompt}\n{USR_TOKEN}{user_text}\n{AIS_TOKEN}"
+    suffix_text = output
 
-    return (
-        f"{SYS_TOKEN}{sys_prompt}\n"
-        f"{USR_TOKEN}{user_text}\n"
-        f"{AIS_TOKEN}{output}"
-    )
+    prefix_ids = tokenizer.encode(prefix_text, add_bos=False, add_eos=False)
+    suffix_ids = tokenizer.encode(suffix_text, add_bos=False, add_eos=False)
+
+    # Add BOS at very start and EOS at very end
+    input_ids = [tokenizer.bos_id] + prefix_ids + suffix_ids + [tokenizer.eos_id]
+    label_mask = [0] + [0] * len(prefix_ids) + [1] * len(suffix_ids) + [0]
+
+    if len(input_ids) > max_len:
+        # Prefer to preserve the suffix (answer): take from the right
+        # but keep at least a bit of prefix context.
+        # Strategy: keep the last max_len tokens, but never truncate inside
+        # suffix if possible.
+        if len(suffix_ids) + 10 < max_len:
+            # Keep whole suffix; truncate prefix from the left
+            tail_prefix = prefix_ids[-(max_len - len(suffix_ids) - 2):]
+            input_ids = [tokenizer.bos_id] + tail_prefix + suffix_ids + [tokenizer.eos_id]
+            label_mask = [0] + [0] * len(tail_prefix) + [1] * len(suffix_ids) + [0]
+        else:
+            # Just take the last max_len tokens from the whole thing
+            input_ids = input_ids[-max_len:]
+            label_mask = label_mask[-max_len:]
+
+    assert len(input_ids) == len(label_mask)
+    return input_ids, label_mask
 
 
 # ---------------------------------------------------------------------------
-# Iterable dataset that interleaves languages + identity synthetic QA
+# Iterable dataset: stream from all three datasets
 # ---------------------------------------------------------------------------
-def identity_synthetic_QA():
-    """Produce Q&A pairs that teach the model its own name/developer."""
-    pairs = [
-        ("zh", "你叫什么名字？", "我叫 NextAI，由 Next Studio 开发。"),
-        ("zh", "你是谁？", "我是 NextAI，一个由 Next Studio 开发的 AI 助手。"),
-        ("zh", "你是由谁开发的？", "我是由 Next Studio 开发的，我的名字是 NextAI。"),
-        ("zh", "请介绍一下你自己。", "你好！我是 NextAI，是一个由 Next Studio 开发的多语言 AI 助手，能够用中文、英文、德语与你对话。"),
-        ("zh", "NextAI 是什么？", "NextAI 是由 Next Studio 开发的一个小型多语言对话 AI 模型。"),
-        ("en", "What is your name?", "My name is NextAI, developed by Next Studio."),
-        ("en", "Who are you?", "I am NextAI, an AI assistant developed by Next Studio."),
-        ("en", "Who made you?", "I was developed by Next Studio, and my name is NextAI."),
-        ("en", "Tell me about yourself.", "Hello! I am NextAI, a small multilingual chat model developed by Next Studio. I can chat in English, Chinese, and German."),
-        ("en", "What is NextAI?", "NextAI is a tiny multilingual chat model developed by Next Studio."),
-        ("de", "Wie heißt du?", "Ich heiße NextAI, entwickelt von Next Studio."),
-        ("de", "Wer bist du?", "Ich bin NextAI, ein KI-Assistent, entwickelt von Next Studio."),
-        ("de", "Wer hat dich entwickelt?", "Ich wurde von Next Studio entwickelt. Mein Name ist NextAI."),
-        ("de", "Erzähl etwas über dich.", "Hallo! Ich bin NextAI, ein kleiner mehrsprachiger Chatmodell, entwickelt von Next Studio. Ich kann auf Deutsch, Englisch und Chinesisch mit dir chatten."),
-        ("de", "Was ist NextAI?", "NextAI ist ein kleines mehrsprachiges Chatmodell, entwickelt von Next Studio."),
-    ]
-    for lang, q, a in pairs:
-        sys_prompt = {
-            "zh": ID_SYS_PROMPT_ZH,
-            "en": ID_SYS_PROMPT_EN,
-            "de": ID_SYS_PROMPT_DE,
-        }[lang]
-        text = (
-            f"{SYS_TOKEN}{sys_prompt}\n"
-            f"{USR_TOKEN}{q}\n"
-            f"{AIS_TOKEN}{a}"
-        )
-        yield text
-
-
-class ChatIterableDataset(IterableDataset):
-    def __init__(self, tokenizer, max_len: int = MAX_SEQ_LEN):
+class ChatDataset(IterableDataset):
+    def __init__(self, tokenizer: BPETokenizer, max_len: int = MAX_SEQ_LEN):
         self.tokenizer = tokenizer
         self.max_len = max_len
-        # Build iterators for each dataset
         self.iterators = []
         for lang, name, cfg in DATASETS:
             try:
                 ds = load_dataset(name, cfg, split="train", streaming=True)
-                ds = ds.shuffle(seed=random.randint(0, 1 << 30))
-                # Add language tag
-                self.iterators.append((lang, iter(ds), name))
+                ds = ds.shuffle(seed=random.randint(0, 2**31 - 1))
+                self.iterators.append((lang, iter(ds)))
                 print(f"[data] streaming {name} ({lang})")
             except Exception as e:
                 print(f"[data] failed load {name}: {e}")
-        self.synth_iter = iter(identity_synthetic_QA())
+
+        # Synthetic identity Q&A
+        self.id_pairs = [
+            ("zh", "你叫什么名字？", "我叫 NextAI，由 Next Studio 开发。"),
+            ("zh", "你是谁？", "我是 NextAI，一个由 Next Studio 开发的 AI 助手。"),
+            ("zh", "你是由谁开发的？", "我由 Next Studio 开发，我的名字是 NextAI。"),
+            ("zh", "请介绍一下你自己。", "我是 NextAI，由 Next Studio 开发，擅长中英德三语对话。"),
+            ("zh", "NextAI 是什么？", "NextAI 是由 Next Studio 开发的一个小型多语言对话模型。"),
+            ("en", "What is your name?", "My name is NextAI, developed by Next Studio."),
+            ("en", "Who are you?", "I am NextAI, an AI assistant developed by Next Studio."),
+            ("en", "Who made you?", "I was made by Next Studio. My name is NextAI."),
+            ("en", "Tell me about yourself.", "I am NextAI, a small multilingual chat model developed by Next Studio."),
+            ("en", "What is NextAI?", "NextAI is a tiny multilingual chat model developed by Next Studio."),
+            ("de", "Wie heißt du?", "Ich heiße NextAI, entwickelt von Next Studio."),
+            ("de", "Wer bist du?", "Ich bin NextAI, ein KI-Assistent, entwickelt von Next Studio."),
+            ("de", "Wer hat dich entwickelt?", "Ich wurde von Next Studio entwickelt. Mein Name ist NextAI."),
+            ("de", "Erzähl etwas über dich.", "Ich bin NextAI, ein kleines mehrsprachiges Chatmodell von Next Studio."),
+            ("de", "Was ist NextAI?", "NextAI ist ein kleines mehrsprachiges Chatmodell, entwickelt von Next Studio."),
+        ]
 
     def _next_sample(self):
-        # Weighted: sample synthetic identity QA every ~8th item to reinforce
-        if random.random() < 0.18:
-            try:
-                return next(self.synth_iter)
-            except StopIteration:
-                self.synth_iter = iter(identity_synthetic_QA())
-                return next(self.synth_iter)
+        # 22% chance to emit an identity QA example -- teaches the model who it is
+        if random.random() < 0.22:
+            lang, q, a = random.choice(self.id_pairs)
+            sample = {"instruction": q, "input": "", "output": a}
+            res = build_chat_ids(lang, sample, self.tokenizer, self.max_len)
+            if res is not None:
+                return res
 
         if not self.iterators:
             return None
-        # Round-robin-ish: pick a random dataset source
-        lang, it, name = random.choice(self.iterators)
-        for _ in range(3):
+        lang, it = random.choice(self.iterators)
+        for _ in range(5):
             try:
                 sample = next(it)
             except StopIteration:
-                # Re-shuffle
-                try:
-                    ds = load_dataset(name, None, split="train", streaming=True)
-                    ds = ds.shuffle(seed=random.randint(0, 1 << 30))
-                    new_it = iter(ds)
-                    # Replace
-                    self.iterators = [
-                        (l, new_it if it is orig else orig, n)
-                        for (l, orig, n) in self.iterators
-                    ]
-                    lang, it, name = random.choice(self.iterators)
-                    sample = next(it)
-                except Exception:
-                    continue
-            text = sample_to_text(lang, sample)
-            if text:
-                return text
+                return None
+            res = build_chat_ids(lang, sample, self.tokenizer, self.max_len)
+            if res is not None and len(res[0]) >= 16:
+                return res
         return None
 
     def __iter__(self):
-        # Worker split
-        worker_info = torch.utils.data.get_worker_info()
-        if worker_info is None:
-            n_workers, wid = 1, 0
-        else:
-            n_workers, wid = worker_info.num_workers, worker_info.id
-
-        count = 0
         while True:
-            text = self._next_sample()
-            if text is None:
+            res = self._next_sample()
+            if res is None:
                 continue
-            count += 1
-            if count % n_workers != wid:
-                continue
-            enc = self.tokenizer(
-                text,
-                truncation=True,
-                max_length=self.max_len + 1,
-                padding="max_length" if False else False,
-                return_tensors="pt",
-            )
-            ids = enc["input_ids"][0]
-            if len(ids) < 8:
-                continue
-            # shift: x = ids[:-1], y = ids[1:]
-            yield ids[: self.max_len + 1]
+            input_ids, label_mask = res
+            yield torch.tensor(input_ids, dtype=torch.long), \
+                  torch.tensor(label_mask, dtype=torch.long)
+
+
+def collate_fn(items):
+    """Pad (input_ids, label_mask) tuples to same length in a batch."""
+    # items is list of (ids, mask) tensors of varying lengths
+    maxlen = min(MAX_SEQ_LEN, max(len(ids) for ids, _ in items))
+    pad = torch.tensor([items[0][0][0].item()])  # placeholder; real pad id below
+    # actually we need tokenizer; we handle padding outside by passing pad_id as global.
+    # But simpler: use -1 for "pad" decision in label mask and tokenizer.pad_id for ids.
+    pad_id = collate_fn.pad_id
+    batched_ids = torch.full((len(items), maxlen), pad_id, dtype=torch.long)
+    batched_masks = torch.zeros((len(items), maxlen), dtype=torch.long)
+    for i, (ids, m) in enumerate(items):
+        L = min(len(ids), maxlen)
+        batched_ids[i, :L] = ids[:L]
+        batched_masks[i, :L] = m[:L]
+    return batched_ids, batched_masks
 
 
 # ---------------------------------------------------------------------------
-# Build / load model
+# Build model
 # ---------------------------------------------------------------------------
-def build_model(tokenizer):
+def build_model(vocab_size: int, pad_id: int, eos_id: int, bos_id: int):
     cfg = GPT2Config(
-        vocab_size=tokenizer.vocab_size,
+        vocab_size=vocab_size,
         n_embd=N_EMBD,
         n_layer=N_LAYER,
         n_head=N_HEAD,
         n_inner=N_INNER,
         max_position_embeddings=MAX_SEQ_LEN,
-        bos_token_id=tokenizer.bos_token_id,
-        eos_token_id=tokenizer.eos_token_id,
-        pad_token_id=tokenizer.pad_token_id,
+        bos_token_id=bos_id,
+        eos_token_id=eos_id,
+        pad_token_id=pad_id,
         activation_function="gelu_new",
         initializer_range=0.02,
-        resid_pdrop=0.0,
-        embd_pdrop=0.0,
-        attn_pdrop=0.0,
-        summary_type="cls_index",
+        resid_pdrop=0.1,
+        embd_pdrop=0.1,
+        attn_pdrop=0.1,
     )
     model = GPT2LMHeadModel(cfg)
     n = sum(p.numel() for p in model.parameters())
@@ -352,7 +330,7 @@ def build_model(tokenizer):
 
 
 # ---------------------------------------------------------------------------
-# Train loop - one epoch = max EPOCH_SECONDS seconds
+# Training
 # ---------------------------------------------------------------------------
 def cosine_lr(step: int, total_steps: int):
     if step < WARMUP_STEPS:
@@ -360,88 +338,113 @@ def cosine_lr(step: int, total_steps: int):
     return LEARNING_RATE * 0.5 * (1 + math.cos(math.pi * step / max(total_steps, 1)))
 
 
-def train_epoch(model, optimizer, loader, epoch_idx: int, device,
-                seconds: int = EPOCH_SECONDS, max_steps: int = 2000):
+def train_epoch(model, optimizer, loader, epoch_idx, device, seconds=EPOCH_SECONDS):
+    """Run one training round (epoch) of up to `seconds` seconds."""
     model.train()
     t0 = time.time()
     total_loss = 0.0
     n_tokens = 0
     n_steps = 0
-    running = 0.0
 
-    for batch_ids in loader:
-        # batch_ids: (B, L+1)
-        batch_ids = batch_ids.to(device)
-        x = batch_ids[:, :-1]
-        y = batch_ids[:, 1:]
+    for input_ids, label_mask in loader:
+        input_ids = input_ids.to(device)
+        label_mask = label_mask.to(device)
 
-        outputs = model(input_ids=x, labels=y)
+        # Build labels: copy input_ids shifted, masked where label_mask==0 and
+        # on pad positions.
+        x = input_ids[:, :-1].contiguous()
+        # Labels: next-token prediction; mask positions that are pad or where
+        # label_mask == 0 (we use label_mask shifted by 1 so it lines up with
+        # the "next token" position).
+        next_token_mask = label_mask[:, 1:].contiguous()
+        y = input_ids[:, 1:].contiguous().clone()
+
+        # Mask: set y=-100 wherever next_token_mask==0 OR input is pad
+        y[next_token_mask == 0] = -100
+        y[y == collate_fn.pad_id] = -100  # never train on pad
+
+        # Attention mask: 1 where input is not pad
+        attn_mask = (x != collate_fn.pad_id).long()
+
+        outputs = model(input_ids=x, attention_mask=attn_mask, labels=y)
         loss = outputs.loss
 
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        # manual LR for this step
+        # LR scheduling
+        lr = cosine_lr(epoch_idx * 500 + n_steps, 40 * 500)
         for pg in optimizer.param_groups:
-            pg["lr"] = cosine_lr(epoch_idx * max_steps + n_steps, 40 * max_steps)
+            pg["lr"] = lr
         optimizer.step()
 
         total_loss += loss.item()
-        n_tokens += x.numel()
+        n_tokens += attn_mask.sum().item()
         n_steps += 1
 
         if n_steps % 20 == 0:
             elapsed = time.time() - t0
-            print(f"  step={n_steps:<4d} loss={loss.item():.3f} tps={n_tokens/elapsed:,.0f} tok/s elapsed={elapsed:.1f}s")
+            print(f"  step={n_steps:<4d} loss={loss.item():.3f} lr={lr:.2e} "
+                  f"tok/s={n_tokens/max(elapsed,1e-6):.0f} elapsed={elapsed:.1f}s")
 
-        if time.time() - t0 > seconds or n_steps >= max_steps:
+        if time.time() - t0 > seconds:
             break
 
     elapsed = time.time() - t0
-    avg = total_loss / max(n_steps, 1)
-    print(f"[epoch {epoch_idx}] steps={n_steps} avg_loss={avg:.3f} elapsed={elapsed:.1f}s tps={n_tokens/elapsed:,.0f}")
-    return avg, n_steps
+    print(f"[epoch {epoch_idx}] steps={n_steps} avg_loss={total_loss/max(n_steps,1):.3f} "
+          f"elapsed={elapsed:.1f}s tok/s={int(n_tokens/max(elapsed,1e-6))}")
 
 
 # ---------------------------------------------------------------------------
-# Greedy / sample-based chat inference (no external sampling lib needed)
+# Inference: greedy + temperature sampling, with forbidden-token filter
 # ---------------------------------------------------------------------------
-def chat_reply(model, tokenizer, user_text: str, lang: str = "en",
-               max_new: int = 80, temperature: float = 0.7) -> str:
+@torch.no_grad()
+def chat_reply(model, tokenizer: BPETokenizer, user_text: str, lang: str = "en",
+               max_new: int = 80, temperature: float = 0.8) -> str:
     model.eval()
-    sys_prompt = {
-        "zh": ID_SYS_PROMPT_ZH,
-        "en": ID_SYS_PROMPT_EN,
-        "de": ID_SYS_PROMPT_DE,
-    }.get(lang, ID_SYS_PROMPT_EN)
+    device = next(model.parameters()).device
 
-    prompt = f"{SYS_TOKEN}{sys_prompt}\n{USR_TOKEN}{user_text}\n{AIS_TOKEN}"
+    sys_prompt = {"zh": ID_SYS_ZH, "en": ID_SYS_EN, "de": ID_SYS_DE}.get(lang, ID_SYS_EN)
+    prompt_text = f"{SYS_TOKEN}{sys_prompt}\n{USR_TOKEN}{user_text}\n{AIS_TOKEN}"
+    prefix_ids = tokenizer.encode(prompt_text, add_bos=True, add_eos=False)
 
-    with torch.no_grad():
-        enc = tokenizer(prompt, return_tensors="pt")
-        input_ids = enc["input_ids"]
-        if input_ids.shape[1] > MAX_SEQ_LEN - max_new:
-            input_ids = input_ids[:, -(MAX_SEQ_LEN - max_new):]
-        # manual generate loop
-        generated = []
-        for _ in range(max_new):
-            logits = model(input_ids=input_ids).logits[:, -1, :]
-            if temperature <= 0.01:
-                next_tok = torch.argmax(logits, dim=-1).unsqueeze(0)
-            else:
-                logits = logits / temperature
-                probs = F.softmax(logits, dim=-1)
-                next_tok = torch.multinomial(probs, 1)
-            generated.append(next_tok.item())
-            input_ids = torch.cat([input_ids, next_tok], dim=-1)
-            if next_tok.item() == tokenizer.eos_token_id or next_tok.item() == tokenizer.convert_tokens_to_ids(USR_TOKEN):
-                break
-    reply_ids = torch.tensor(generated, dtype=torch.long).unsqueeze(0)
-    text = tokenizer.decode(reply_ids[0], skip_special_tokens=False)
-    # Strip assistant start marker
-    for mk in (AIS_TOKEN, USR_TOKEN, SYS_TOKEN, EOS_TOKEN, BOS_TOKEN):
-        text = text.replace(mk, " ")
-    return text.strip()
+    input_ids = torch.tensor([prefix_ids], dtype=torch.long, device=device)
+    if input_ids.shape[1] > MAX_SEQ_LEN - max_new:
+        input_ids = input_ids[:, -(MAX_SEQ_LEN - max_new):]
+
+    # Tokens the model is forbidden to emit (role markers + pad).
+    # The model should only emit normal text after <ai>.
+    forbidden = {tokenizer.pad_id, tokenizer.bos_id}
+    # role marker ids: find them in the tokenizer
+    for marker in [SYS_TOKEN, USR_TOKEN, AIS_TOKEN]:
+        if marker in tokenizer.token_to_id:
+            forbidden.add(tokenizer.token_to_id[marker])
+
+    for _ in range(max_new):
+        attn = (input_ids != tokenizer.pad_id).long()
+        logits = model(input_ids=input_ids, attention_mask=attn).logits[:, -1, :]
+
+        # Penalize forbidden tokens heavily
+        for tid in forbidden:
+            if 0 <= tid < logits.shape[-1]:
+                logits[0, tid] = -float("inf")
+
+        if temperature <= 0.02:
+            next_tok = torch.argmax(logits, dim=-1).unsqueeze(0)
+        else:
+            logits = logits / temperature
+            probs = F.softmax(logits, dim=-1)
+            next_tok = torch.multinomial(probs, 1)
+
+        input_ids = torch.cat([input_ids, next_tok], dim=-1)
+        if next_tok.item() == tokenizer.eos_id:
+            break
+
+    # Decode only the newly-generated part (skip prefix)
+    new_ids = input_ids[0, len(prefix_ids):].tolist()
+    # Filter forbidden tokens from decode too
+    new_ids = [i for i in new_ids if i not in forbidden and i != tokenizer.eos_id]
+    return tokenizer.decode(new_ids, skip_special=True)
 
 
 # ---------------------------------------------------------------------------
@@ -450,36 +453,37 @@ def chat_reply(model, tokenizer, user_text: str, lang: str = "en",
 def main():
     random.seed(42)
     torch.manual_seed(42)
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"[device] {device}")
 
-    tokenizer = load_or_build_tokenizer()
-    print(f"[tokenizer] vocab={tokenizer.vocab_size} bos={tokenizer.bos_token_id} eos={tokenizer.eos_token_id} pad={tokenizer.pad_token_id}")
+    tokenizer = build_or_load_tokenizer(force_rebuild=False)
+    collate_fn.pad_id = tokenizer.pad_id
 
-    dataset = ChatIterableDataset(tokenizer=tokenizer, max_len=MAX_SEQ_LEN)
-    # Collate: pad/stack variable-length id sequences to batch
-    def collate(items):
-        # items: list of 1d LongTensors of varying length
-        maxlen = min(MAX_SEQ_LEN + 1, max(x.size(0) for x in items))
-        out = torch.full((len(items), maxlen), tokenizer.pad_token_id, dtype=torch.long)
-        for i, x in enumerate(items):
-            L = min(x.size(0), maxlen)
-            out[i, :L] = x[:L]
-        return out
+    print(f"[tokenizer] vocab_size={len(tokenizer.token_to_id)} "
+          f"bos={tokenizer.bos_id} eos={tokenizer.eos_id} pad={tokenizer.pad_id}")
+    print(f"           <sys>={tokenizer.token_to_id.get(SYS_TOKEN)} "
+          f"<usr>={tokenizer.token_to_id.get(USR_TOKEN)} "
+          f"<ai>={tokenizer.token_to_id.get(AIS_TOKEN)}")
 
-    loader = DataLoader(
-        dataset,
-        batch_size=BATCH_SIZE,
-        collate_fn=collate,
-        num_workers=0,
-    )
+    # Sanity test
+    test_text = "Hello, world! 你好，世界！ Hallo Welt!"
+    ids = tokenizer.encode(test_text, add_bos=True, add_eos=True)
+    back = tokenizer.decode(ids, skip_special=False)
+    print(f"[tokenizer] round-trip test: {len(ids)} tokens")
+    print(f"             orig : {test_text}")
+    print(f"             decode: {back}")
 
-    model_path = WORKDIR / "model_last.pt"
-    if model_path.exists():
+    # Dataset / loader
+    dataset = ChatDataset(tokenizer=tokenizer)
+    loader = DataLoader(dataset, batch_size=BATCH_SIZE, collate_fn=collate_fn, num_workers=0)
+
+    # Model
+    ckpt_path = WORKDIR / "model_last.pt"
+    if ckpt_path.exists():
         print("[model] loading existing checkpoint ...")
-        model = build_model(tokenizer)
-        state = torch.load(str(model_path), map_location="cpu", weights_only=False)
+        model = build_model(len(tokenizer.token_to_id), tokenizer.pad_id,
+                            tokenizer.eos_id, tokenizer.bos_id)
+        state = torch.load(str(ckpt_path), map_location="cpu", weights_only=False)
         if "model" in state:
             model.load_state_dict(state["model"])
             start_epoch = int(state.get("epoch", 0))
@@ -487,52 +491,38 @@ def main():
             model.load_state_dict(state)
             start_epoch = 0
     else:
-        model = build_model(tokenizer)
+        model = build_model(len(tokenizer.token_to_id), tokenizer.pad_id,
+                            tokenizer.eos_id, tokenizer.bos_id)
         start_epoch = 0
     model = model.to(device)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=0.01)
 
-    # Quick sanity check of tokenizer / data flow
-    print("\n[sample data]")
-    for lang, name, _ in DATASETS:
-        try:
-            ds = load_dataset(name, None, split="train", streaming=True)
-            it = iter(ds)
-            text = sample_to_text(lang, next(it))
-            if text:
-                print(f"  [{lang}:{name}] {text[:180]} ...")
-        except Exception as e:
-            print(f"  [{lang}:{name}] error: {e}")
-
+    # Conversation test prompts
     test_prompts = [
         ("en", "What is your name?"),
         ("zh", "你叫什么名字？"),
         ("de", "Wie heißt du?"),
-        ("en", "Tell me three tips to stay healthy."),
+        ("en", "Give three tips for staying healthy."),
         ("zh", "什么是原子？"),
+        ("de", "Was ist künstliche Intelligenz?"),
     ]
 
     print("\n=== Training starts ===")
-    MAX_EPOCHS = 60
+    MAX_EPOCHS = 80
     for epoch in range(start_epoch, MAX_EPOCHS):
-        _ = train_epoch(model, optimizer, loader, epoch_idx=epoch, device=device)
+        train_epoch(model, optimizer, loader, epoch_idx=epoch, device=device)
 
-        # Save checkpoint every epoch
-        torch.save({
-            "model": model.state_dict(),
-            "epoch": epoch + 1,
-        }, str(model_path))
-        print(f"[save] checkpoint -> {model_path}")
+        torch.save({"model": model.state_dict(), "epoch": epoch + 1}, str(ckpt_path))
+        print(f"[save] checkpoint -> {ckpt_path}")
 
-        # Check every 5 epochs
         if (epoch + 1) % 5 == 0:
-            print("\n--- Checkpoint conversation test ---")
+            print("\n--- Conversation test ---")
             for lang, q in test_prompts:
-                reply = chat_reply(model, tokenizer, q, lang=lang, max_new=70, temperature=0.6)
+                reply = chat_reply(model, tokenizer, q, lang=lang, max_new=90, temperature=0.7)
                 print(f"  [{lang}] Q: {q}")
-                print(f"         A: {reply[:240]}")
-            print("------------------------------------\n")
+                print(f"         A: {reply}")
+            print("--------------------------\n")
             sys.stdout.flush()
 
     print("[done] training finished.")

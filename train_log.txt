@@ -1,127 +1,116 @@
 [device] cpu
-[tokenizer] building subword tokenizer ...
-[tokenizer] sampled ~400 examples from tatsu-lab/alpaca
+[tokenizer] building custom BPE tokenizer (target vocab=5000) ...
+[bpe] sampling text from tatsu-lab/alpaca ...
 Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
-[tokenizer] sampled ~400 examples from shibing624/alpaca-zh
-[tokenizer] sampled ~400 examples from Mario12355/german-sft-mix
-[tokenizer] vocab=8000 bos=4 eos=5 pad=6
+[bpe] sampling text from shibing624/alpaca-zh ...
+[bpe] sampling text from Mario12355/german-sft-mix ...
+[bpe] unique words=8564 total_subwords=204993 target_merges=4738
+[bpe] merge 1000/4738 vocab=1262
+[bpe] merge 2000/4738 vocab=2262
+[bpe] merge 3000/4738 vocab=3262
+[bpe] merge 4000/4738 vocab=4262
+[bpe] final vocab=5000 merges=4738
+[tokenizer] final vocab size = 5000
+[tokenizer] vocab_size=5000 bos=0 eos=1 pad=2
+           <sys>=3 <usr>=4 <ai>=5
+[tokenizer] round-trip test: 30 tokens
+             orig : Hello, world! 你好，世界！ Hallo Welt!
+             decode: <s>Hello, world! 你好，世界！ Hallo Welt!</s>
 [data] streaming tatsu-lab/alpaca (en)
 [data] streaming shibing624/alpaca-zh (zh)
 [data] streaming Mario12355/german-sft-mix (de)
-[model] 1,240,128 trainable parameters
-
-[sample data]
-  [en:tatsu-lab/alpaca] <sys>You are NextAI, a helpful AI assistant developed by Next Studio. Please respond naturally in English.
-<usr>Give three tips for staying healthy.
-<ai>1.Eat a balanced diet and m ...
-  [zh:shibing624/alpaca-zh] <sys>你是一个名为 NextAI 的智能助手，由 Next Studio 开发。请用中文自然回答用户的问题。
-<usr>保持健康的三个提示。
-<ai>以下是保持健康的三个提示：
-
-1. 保持身体活动。每天做适当的身体运动，如散步、跑步或游泳，能促进心血管健康，增强肌肉力量，并有助于减少体重。
-
-2. 均衡饮食。每天食用新鲜的蔬菜、水果、全谷物和脂肪含量低 ...
-  [de:Mario12355/german-sft-mix] <usr>Du bist ein KI-Assistent. Dir wird eine Aufgabe gegeben. Du musst eine detaillierte und ausführliche Antwort generieren.
-
-Welcher Film aus dem Jahr 2007 ist eine übertriebene  ...
+[model] 952,128 trainable parameters
 
 === Training starts ===
-[transformers] We strongly recommend passing in an `attention_mask` since your input_ids may be padded. See https://huggingface.co/docs/transformers/troubleshooting#incorrect-output-when-padding-tokens-arent-masked.
 [transformers] `loss_type=None` was set in the config but it is unrecognized. Using the default loss: `ForCausalLMLoss`.
-  step=20   loss=8.079 tps=3,123 tok/s elapsed=9.6s
-  step=40   loss=7.627 tps=4,512 tok/s elapsed=13.3s
-  step=60   loss=5.850 tps=5,280 tok/s elapsed=16.9s
-  step=80   loss=5.773 tps=5,820 tok/s elapsed=20.4s
-  step=100  loss=5.371 tps=6,123 tok/s elapsed=24.4s
-  step=120  loss=4.264 tps=6,353 tok/s elapsed=28.0s
-  step=140  loss=4.569 tps=6,536 tok/s elapsed=31.8s
-  step=160  loss=4.991 tps=6,727 tok/s elapsed=35.4s
-  step=180  loss=3.739 tps=6,884 tok/s elapsed=38.9s
-  step=200  loss=2.310 tps=6,996 tok/s elapsed=42.7s
-[epoch 0] steps=213 avg_loss=5.395 elapsed=45.1s tps=7,050
+  step=20   loss=8.186 lr=1.00e-04 tok/s=2199 elapsed=14.6s
+  step=40   loss=7.613 lr=2.00e-04 tok/s=3213 elapsed=20.2s
+  step=60   loss=7.171 lr=3.00e-04 tok/s=3777 elapsed=25.9s
+  step=80   loss=6.490 lr=4.00e-04 tok/s=4106 elapsed=31.9s
+  step=100  loss=6.135 lr=5.00e-04 tok/s=4313 elapsed=37.8s
+  step=120  loss=5.187 lr=5.00e-04 tok/s=4516 elapsed=43.4s
+[epoch 0] steps=126 avg_loss=6.941 elapsed=45.2s tok/s=4550
 [save] checkpoint -> /workspace/nextai/model_last.pt
-  step=20   loss=3.609 tps=8,582 tok/s elapsed=3.5s
-  step=40   loss=3.117 tps=8,174 tok/s elapsed=7.2s
-  step=60   loss=2.535 tps=8,186 tok/s elapsed=10.7s
-  step=80   loss=3.689 tps=8,297 tok/s elapsed=14.1s
-  step=100  loss=4.041 tps=8,343 tok/s elapsed=17.7s
-  step=120  loss=2.608 tps=8,397 tok/s elapsed=21.1s
-  step=140  loss=3.140 tps=8,375 tok/s elapsed=24.8s
-  step=160  loss=5.724 tps=8,326 tok/s elapsed=28.6s
-  step=180  loss=2.467 tps=8,332 tok/s elapsed=32.1s
-  step=200  loss=2.290 tps=8,328 tok/s elapsed=35.7s
-  step=220  loss=3.994 tps=8,283 tok/s elapsed=39.4s
-  step=240  loss=3.255 tps=8,285 tok/s elapsed=43.1s
-[epoch 1] steps=250 avg_loss=3.380 elapsed=45.0s tps=8,262
+  step=20   loss=5.485 lr=4.99e-04 tok/s=5726 elapsed=5.7s
+  step=40   loss=5.180 lr=4.99e-04 tok/s=5730 elapsed=11.3s
+  step=60   loss=5.630 lr=4.99e-04 tok/s=5755 elapsed=16.9s
+  step=80   loss=4.926 lr=4.99e-04 tok/s=5748 elapsed=22.6s
+  step=100  loss=4.415 lr=4.99e-04 tok/s=5662 elapsed=28.4s
+  step=120  loss=4.549 lr=4.99e-04 tok/s=5619 elapsed=34.2s
+  step=140  loss=4.431 lr=4.99e-04 tok/s=5596 elapsed=40.1s
+[epoch 1] steps=157 avg_loss=4.937 elapsed=45.2s tok/s=5590
 [save] checkpoint -> /workspace/nextai/model_last.pt
-  step=20   loss=5.351 tps=8,319 tok/s elapsed=3.5s
-  step=40   loss=2.735 tps=8,215 tok/s elapsed=7.3s
-  step=60   loss=4.561 tps=8,133 tok/s elapsed=10.9s
-  step=80   loss=3.176 tps=8,172 tok/s elapsed=14.6s
-  step=100  loss=2.873 tps=8,132 tok/s elapsed=18.4s
-  step=120  loss=4.142 tps=8,067 tok/s elapsed=22.2s
-  step=140  loss=1.883 tps=7,972 tok/s elapsed=26.3s
-  step=160  loss=1.917 tps=7,984 tok/s elapsed=30.1s
-  step=180  loss=3.239 tps=7,959 tok/s elapsed=33.9s
-  step=200  loss=2.136 tps=7,986 tok/s elapsed=37.4s
-  step=220  loss=3.094 tps=7,998 tok/s elapsed=41.2s
-  step=240  loss=3.362 tps=7,995 tok/s elapsed=44.9s
-[epoch 2] steps=241 avg_loss=3.138 elapsed=45.1s tps=7,994
+  step=20   loss=4.602 lr=4.97e-04 tok/s=5642 elapsed=5.8s
+  step=40   loss=4.861 lr=4.97e-04 tok/s=5550 elapsed=11.8s
+  step=60   loss=4.550 lr=4.97e-04 tok/s=5608 elapsed=17.5s
+  step=80   loss=4.231 lr=4.96e-04 tok/s=5547 elapsed=23.5s
+  step=100  loss=4.442 lr=4.96e-04 tok/s=5589 elapsed=29.2s
+  step=120  loss=4.313 lr=4.96e-04 tok/s=5447 elapsed=35.4s
+  step=140  loss=4.260 lr=4.96e-04 tok/s=5462 elapsed=41.4s
+[epoch 2] steps=153 avg_loss=4.570 elapsed=45.0s tok/s=5458
 [save] checkpoint -> /workspace/nextai/model_last.pt
-  step=20   loss=1.937 tps=8,113 tok/s elapsed=3.6s
-  step=40   loss=3.912 tps=8,134 tok/s elapsed=7.2s
-  step=60   loss=2.783 tps=8,043 tok/s elapsed=11.0s
-  step=80   loss=3.460 tps=8,053 tok/s elapsed=14.6s
-  step=100  loss=2.651 tps=8,090 tok/s elapsed=18.3s
-  step=120  loss=2.966 tps=8,076 tok/s elapsed=22.0s
-  step=140  loss=1.073 tps=8,002 tok/s elapsed=26.0s
-  step=160  loss=2.122 tps=7,954 tok/s elapsed=29.8s
-  step=180  loss=2.142 tps=7,994 tok/s elapsed=33.3s
-  step=200  loss=3.308 tps=7,995 tok/s elapsed=37.1s
-  step=220  loss=3.337 tps=8,014 tok/s elapsed=40.7s
-  step=240  loss=2.956 tps=8,025 tok/s elapsed=44.2s
-[epoch 3] steps=245 avg_loss=2.943 elapsed=45.1s tps=8,032
+  step=20   loss=4.333 lr=4.93e-04 tok/s=5548 elapsed=5.9s
+  step=40   loss=4.106 lr=4.93e-04 tok/s=5381 elapsed=12.0s
+  step=60   loss=4.909 lr=4.93e-04 tok/s=5424 elapsed=17.9s
+  step=80   loss=4.501 lr=4.92e-04 tok/s=5379 elapsed=23.9s
+  step=100  loss=4.768 lr=4.92e-04 tok/s=5434 elapsed=30.0s
+  step=120  loss=4.421 lr=4.92e-04 tok/s=5373 elapsed=36.3s
+  step=140  loss=4.135 lr=4.92e-04 tok/s=5414 elapsed=42.0s
+[epoch 3] steps=151 avg_loss=4.267 elapsed=45.3s tok/s=5422
 [save] checkpoint -> /workspace/nextai/model_last.pt
-  step=20   loss=2.976 tps=8,000 tok/s elapsed=3.6s
-  step=40   loss=4.125 tps=8,223 tok/s elapsed=6.9s
-  step=60   loss=3.930 tps=8,135 tok/s elapsed=10.7s
-  step=80   loss=2.966 tps=8,043 tok/s elapsed=14.5s
-  step=100  loss=3.341 tps=8,101 tok/s elapsed=18.1s
-  step=120  loss=2.160 tps=8,121 tok/s elapsed=21.8s
-  step=140  loss=2.524 tps=8,027 tok/s elapsed=25.9s
-  step=160  loss=3.431 tps=7,979 tok/s elapsed=29.7s
-  step=180  loss=3.182 tps=8,000 tok/s elapsed=33.4s
-  step=200  loss=3.252 tps=8,034 tok/s elapsed=37.0s
-  step=220  loss=2.360 tps=8,033 tok/s elapsed=40.6s
-  step=240  loss=2.727 tps=8,016 tok/s elapsed=44.3s
-[epoch 4] steps=245 avg_loss=2.869 elapsed=45.2s tps=8,023
+  step=20   loss=3.648 lr=4.88e-04 tok/s=5568 elapsed=5.7s
+  step=40   loss=2.980 lr=4.87e-04 tok/s=5469 elapsed=11.8s
+  step=60   loss=3.412 lr=4.87e-04 tok/s=5415 elapsed=17.8s
+  step=80   loss=4.325 lr=4.87e-04 tok/s=5414 elapsed=23.7s
+  step=100  loss=3.418 lr=4.87e-04 tok/s=5445 elapsed=29.4s
+  step=120  loss=3.706 lr=4.86e-04 tok/s=5467 elapsed=35.5s
+  step=140  loss=4.640 lr=4.86e-04 tok/s=5454 elapsed=41.5s
+[epoch 4] steps=153 avg_loss=3.990 elapsed=45.3s tok/s=5462
 [save] checkpoint -> /workspace/nextai/model_last.pt
 
---- Checkpoint conversation test ---
+--- Conversation test ---
   [en] Q: What is your name?
-         A: <pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad>
+         A:   doentick oented  elo oentick ot.It othe yisNAI elo esent    oisNAI  o   l o   o   yN    u   o om     doin t yonNAIm 
   [zh] Q: 你叫什么名字？
-         A: <pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad>
-  [de] Q: Wie heißt du?
-         A: <pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad>
-  [en] Q: Tell me three tips to stay healthy.
-         A: <pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad>
-  [zh] Q: 什么是原子？
-         A: <pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad>
-------------------------------------
+         A:  extStui由N ext.PeN extStuiN extStui我 ext� do开� extStui可�NAI一extStuire开的� extStuio开�
 
-  step=20   loss=1.823 tps=7,948 tok/s elapsed=3.7s
-  step=40   loss=2.742 tps=7,997 tok/s elapsed=7.5s
-  step=60   loss=2.369 tps=8,003 tok/s elapsed=11.2s
-  step=80   loss=2.138 tps=8,023 tok/s elapsed=14.8s
-  step=100  loss=3.806 tps=8,040 tok/s elapsed=18.4s
-  step=120  loss=2.071 tps=7,957 tok/s elapsed=22.5s
-  step=140  loss=1.372 tps=7,896 tok/s elapsed=26.2s
-  step=160  loss=2.860 tps=7,903 tok/s elapsed=29.9s
-  step=180  loss=1.788 tps=7,898 tok/s elapsed=33.7s
-  step=200  loss=2.714 tps=7,935 tok/s elapsed=37.3s
-  step=220  loss=3.000 tps=7,970 tok/s elapsed=40.8s
-  step=240  loss=1.735 tps=7,994 tok/s elapsed=44.4s
-[epoch 5] steps=244 avg_loss=2.933 elapsed=45.2s tps=7,997
+.At extStui  extStui extStui extStui do开� doation do
+  [de] Q: Wie heißt du?
+         A:   eSpreIchbinN onN ext ext,entNAI do开� doeltv iIchbinN drerextStui.
+
+dosprentNAI ext,entick lefer.weltv weltfnlich ext,entick  da>   doentick   ext,
+  [en] Q: Give three tips for staying healthy.
+         A:      an.Wasist oe   ect ell ing       us es othe  nr .D   istent-om  il
+.devpedb     aiion          asst       gs r 
+  [zh] Q: 什么是原子？
+         A: extStui extStui do开�是AI ext.Icheltv do开� extStuio开�
+
+edo开�的�ation do开 do开中���总 extStui do开的 ext�
+
+.Ichhwo开� do开�  ext
+  [de] Q: Was ist künstliche Intelligenz?
+         A: eAntv ameeAI ereig edo开�   extStui.Ichhelttri.Herachein l en
+
+
+
+ ext� weltv      ererß  doentick onNAIendoentick  anesNAI  ohv
+--------------------------
+
+  step=20   loss=4.239 lr=4.81e-04 tok/s=5702 elapsed=5.9s
+  step=40   loss=3.658 lr=4.80e-04 tok/s=5636 elapsed=11.7s
+  step=60   loss=3.670 lr=4.80e-04 tok/s=5648 elapsed=17.4s
+  step=80   loss=4.261 lr=4.80e-04 tok/s=5630 elapsed=23.2s
+  step=100  loss=3.898 lr=4.79e-04 tok/s=5687 elapsed=28.8s
+  step=120  loss=3.887 lr=4.79e-04 tok/s=5690 elapsed=34.5s
+  step=140  loss=4.596 lr=4.79e-04 tok/s=5712 elapsed=40.1s
+[epoch 5] steps=158 avg_loss=3.901 elapsed=45.1s tok/s=5697
 [save] checkpoint -> /workspace/nextai/model_last.pt
-  step=20   loss=2.579 tps=8,807 tok/s elapsed=3.2s
+  step=20   loss=3.707 lr=4.72e-04 tok/s=5523 elapsed=5.8s
+  step=40   loss=3.816 lr=4.72e-04 tok/s=5471 elapsed=11.8s
+  step=60   loss=2.414 lr=4.72e-04 tok/s=5470 elapsed=17.8s
+  step=80   loss=3.280 lr=4.71e-04 tok/s=5413 elapsed=23.7s
+  step=100  loss=3.922 lr=4.71e-04 tok/s=5402 elapsed=29.8s
+  step=120  loss=3.539 lr=4.71e-04 tok/s=5438 elapsed=35.5s
+  step=140  loss=4.740 lr=4.70e-04 tok/s=5433 elapsed=41.2s
+[epoch 6] steps=154 avg_loss=3.883 elapsed=45.1s tok/s=5479
+[save] checkpoint -> /workspace/nextai/model_last.pt
