@@ -114,3 +114,1008 @@ edo开�的�ation do开 do开中���总 extStui do开的 ext�
   step=140  loss=4.740 lr=4.70e-04 tok/s=5433 elapsed=41.2s
 [epoch 6] steps=154 avg_loss=3.883 elapsed=45.1s tok/s=5479
 [save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=4.309 lr=4.63e-04 tok/s=5479 elapsed=5.7s
+  step=40   loss=2.399 lr=4.62e-04 tok/s=5575 elapsed=11.4s
+  step=60   loss=3.318 lr=4.62e-04 tok/s=5574 elapsed=17.2s
+  step=80   loss=2.259 lr=4.62e-04 tok/s=5602 elapsed=22.9s
+  step=100  loss=3.534 lr=4.61e-04 tok/s=5580 elapsed=28.6s
+  step=120  loss=4.584 lr=4.61e-04 tok/s=5576 elapsed=34.5s
+  step=140  loss=3.030 lr=4.60e-04 tok/s=5608 elapsed=40.0s
+[epoch 7] steps=158 avg_loss=3.672 elapsed=45.1s tok/s=5588
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.920 lr=4.52e-04 tok/s=5779 elapsed=5.6s
+  step=40   loss=3.774 lr=4.51e-04 tok/s=5723 elapsed=11.3s
+  step=60   loss=4.021 lr=4.51e-04 tok/s=5706 elapsed=17.0s
+  step=80   loss=3.767 lr=4.50e-04 tok/s=5746 elapsed=22.5s
+  step=100  loss=3.175 lr=4.50e-04 tok/s=5706 elapsed=28.3s
+  step=120  loss=4.100 lr=4.49e-04 tok/s=5667 elapsed=34.1s
+  step=140  loss=3.890 lr=4.49e-04 tok/s=5681 elapsed=39.7s
+  step=160  loss=4.258 lr=4.49e-04 tok/s=5734 elapsed=45.3s
+[epoch 8] steps=160 avg_loss=3.597 elapsed=45.3s tok/s=5733
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.226 lr=4.40e-04 tok/s=5541 elapsed=5.7s
+  step=40   loss=4.412 lr=4.39e-04 tok/s=5532 elapsed=11.3s
+  step=60   loss=2.907 lr=4.39e-04 tok/s=5581 elapsed=17.0s
+  step=80   loss=3.175 lr=4.38e-04 tok/s=5580 elapsed=22.7s
+  step=100  loss=3.194 lr=4.38e-04 tok/s=5546 elapsed=28.4s
+  step=120  loss=3.650 lr=4.37e-04 tok/s=5537 elapsed=34.3s
+  step=140  loss=3.787 lr=4.37e-04 tok/s=5588 elapsed=39.7s
+  step=160  loss=3.804 lr=4.36e-04 tok/s=5607 elapsed=45.2s
+[epoch 9] steps=160 avg_loss=3.553 elapsed=45.2s tok/s=5606
+[save] checkpoint -> /workspace/nextai/model_last.pt
+
+--- Conversation test ---
+  [en] Q: What is your name?
+         A:  ext,entick  extStuiIchwext,k yNAI  extStui.Myn   extStui.Myn extStui.MeinNAI do开的�����和�这�  do开的��我�NAI�我一由NNAI����这��我  yNAI
+  [zh] Q: 你叫什么名字？
+         A: ext����� ext� extStui do开� 发�N do开的��由N 发�我 发�一extStui.我 发�我���
+
+ 发� 发�一���对��我的AI�0 extStui do开的��一由N do开
+  [de] Q: Wie heißt du?
+         A:   ev ielistesmhsprig weltv istein welt eracheinkäentick extStui.MeinN extStuio开� doeltv weltv extStui.MeinNAI weltv ext,entick doentick doentick extStui..MeinN
+  [en] Q: Give three tips for staying healthy.
+         A:           o ent  e    u  isa etheE aas    .<i og.Thes  iIsenth   an   ar   o"t fer   ites       u     aa 
+  [zh] Q: 什么是原子？
+         A: ext�您�是NAI�一由N extStui我一���mod�我���的�是���由NAI�以�������我一��我为���囋��诨�����
+
+����这��是��有����有�可的
+  [de] Q: Was ist künstliche Intelligenz?
+         A:  IamNAI  extStui.MeinNAI welt  weltv extStui extStui.Heracherentick doentick  ext,entick lesein weltv onNAI weltv a weltv onNAI onNAI onNAI weltv  ext
+--------------------------
+
+  step=20   loss=3.087 lr=4.26e-04 tok/s=5959 elapsed=5.5s
+  step=40   loss=3.563 lr=4.26e-04 tok/s=5922 elapsed=10.9s
+  step=60   loss=3.805 lr=4.25e-04 tok/s=5814 elapsed=16.7s
+  step=80   loss=3.164 lr=4.25e-04 tok/s=5854 elapsed=22.2s
+  step=100  loss=4.237 lr=4.24e-04 tok/s=5761 elapsed=28.1s
+  step=120  loss=3.947 lr=4.23e-04 tok/s=5775 elapsed=33.8s
+  step=140  loss=3.206 lr=4.23e-04 tok/s=5805 elapsed=39.3s
+  step=160  loss=3.651 lr=4.22e-04 tok/s=5777 elapsed=45.1s
+[epoch 10] steps=160 avg_loss=3.553 elapsed=45.1s tok/s=5776
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.081 lr=4.12e-04 tok/s=5870 elapsed=5.4s
+  step=40   loss=3.441 lr=4.11e-04 tok/s=5872 elapsed=11.0s
+  step=60   loss=3.571 lr=4.11e-04 tok/s=5824 elapsed=16.7s
+  step=80   loss=4.780 lr=4.10e-04 tok/s=5687 elapsed=22.5s
+  step=100  loss=3.659 lr=4.09e-04 tok/s=5617 elapsed=28.4s
+  step=120  loss=4.543 lr=4.09e-04 tok/s=5649 elapsed=34.0s
+  step=140  loss=3.408 lr=4.08e-04 tok/s=5660 elapsed=39.7s
+  step=160  loss=3.397 lr=4.08e-04 tok/s=5696 elapsed=45.2s
+[epoch 11] steps=160 avg_loss=3.432 elapsed=45.2s tok/s=5695
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.321 lr=3.96e-04 tok/s=5734 elapsed=5.5s
+  step=40   loss=4.013 lr=3.96e-04 tok/s=5839 elapsed=11.0s
+  step=60   loss=2.567 lr=3.95e-04 tok/s=5710 elapsed=17.0s
+  step=80   loss=2.900 lr=3.94e-04 tok/s=5696 elapsed=22.7s
+  step=100  loss=2.765 lr=3.94e-04 tok/s=5741 elapsed=28.5s
+  step=120  loss=2.813 lr=3.93e-04 tok/s=5759 elapsed=34.2s
+  step=140  loss=3.546 lr=3.92e-04 tok/s=5762 elapsed=39.7s
+[epoch 12] steps=159 avg_loss=3.501 elapsed=45.2s tok/s=5745
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.663 lr=3.80e-04 tok/s=6085 elapsed=5.6s
+  step=40   loss=3.990 lr=3.79e-04 tok/s=5945 elapsed=11.3s
+  step=60   loss=2.949 lr=3.79e-04 tok/s=5870 elapsed=17.0s
+  step=80   loss=4.336 lr=3.78e-04 tok/s=5839 elapsed=22.7s
+  step=100  loss=4.485 lr=3.77e-04 tok/s=5713 elapsed=28.8s
+  step=120  loss=4.295 lr=3.77e-04 tok/s=5719 elapsed=34.3s
+  step=140  loss=2.736 lr=3.76e-04 tok/s=5699 elapsed=39.9s
+[epoch 13] steps=159 avg_loss=3.371 elapsed=45.2s tok/s=5709
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=2.831 lr=3.63e-04 tok/s=6078 elapsed=5.5s
+  step=40   loss=3.874 lr=3.62e-04 tok/s=5763 elapsed=11.1s
+  step=60   loss=3.805 lr=3.61e-04 tok/s=5816 elapsed=16.6s
+  step=80   loss=2.811 lr=3.61e-04 tok/s=5838 elapsed=22.1s
+  step=100  loss=3.088 lr=3.60e-04 tok/s=5836 elapsed=27.8s
+  step=120  loss=3.388 lr=3.59e-04 tok/s=5730 elapsed=33.6s
+  step=140  loss=3.388 lr=3.59e-04 tok/s=5772 elapsed=39.0s
+  step=160  loss=3.266 lr=3.58e-04 tok/s=5772 elapsed=44.7s
+[epoch 14] steps=162 avg_loss=3.372 elapsed=45.3s tok/s=5775
+[save] checkpoint -> /workspace/nextai/model_last.pt
+
+--- Conversation test ---
+  [en] Q: What is your name?
+         A:  yNAI  extStuiIchbinNAI ext,ent ext,devpedb doentick  extStui.Mynto开.Myn doent extStui.Myn doent extStuiIchweltv  extStuiMyn  doentick ext,entick   extStui.
+  [zh] Q: 你叫什么名字？
+         A: � extStui我 extStuiNAI�我 do开� ������个 发 发�一由N 发�我�N 发�由N 发�我���诨�诨�诨���.�������
+.使一�����7y诨�诨���
+  [de] Q: Wie heißt du?
+         A:   ev ameisN onN extStui.MeinNAIAI ext,entick   ameistesChtellNAI extStui.MeinNAI doentick onNAI   ext,entick   ext,entick          extStui.Mynlich      
+  [en] Q: Give three tips for staying healthy.
+         A:            o    an    res   r    ,and,and      oc  all   clue oh    r    periony  aeant  tsandbaing     o  or 
+  [zh] Q: 什么是原子？
+         A: ext�个 ext� 发��诨��我�����一��的��5 发���三���的�������4 技����
+.是N
+
+.�����毁�这���
+.变�可数���   
+  [de] Q: Was ist künstliche Intelligenz?
+         A:  IAssentick  ext,entick a onN extStui.Aach onN extStui.Ichwrachesmhweltv  amod        ext,ein amod amod ext,ent onN  a amod aenent onN onNAI a  
+--------------------------
+
+  step=20   loss=3.795 lr=3.45e-04 tok/s=5766 elapsed=5.6s
+  step=40   loss=3.505 lr=3.44e-04 tok/s=5880 elapsed=11.1s
+  step=60   loss=4.613 lr=3.44e-04 tok/s=5922 elapsed=16.5s
+  step=80   loss=3.021 lr=3.43e-04 tok/s=5847 elapsed=22.4s
+  step=100  loss=2.882 lr=3.42e-04 tok/s=5808 elapsed=27.9s
+  step=120  loss=3.852 lr=3.41e-04 tok/s=5835 elapsed=33.4s
+  step=140  loss=2.798 lr=3.41e-04 tok/s=5830 elapsed=39.0s
+  step=160  loss=3.397 lr=3.40e-04 tok/s=5816 elapsed=44.6s
+[epoch 15] steps=162 avg_loss=3.289 elapsed=45.2s tok/s=5816
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.228 lr=3.27e-04 tok/s=5714 elapsed=5.5s
+  step=40   loss=2.895 lr=3.26e-04 tok/s=5673 elapsed=11.3s
+  step=60   loss=3.930 lr=3.25e-04 tok/s=5690 elapsed=17.1s
+  step=80   loss=3.665 lr=3.24e-04 tok/s=5652 elapsed=23.1s
+  step=100  loss=3.645 lr=3.24e-04 tok/s=5664 elapsed=28.6s
+  step=120  loss=2.593 lr=3.23e-04 tok/s=5663 elapsed=34.3s
+  step=140  loss=2.498 lr=3.22e-04 tok/s=5652 elapsed=40.0s
+[epoch 16] steps=159 avg_loss=3.332 elapsed=45.2s tok/s=5684
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=4.270 lr=3.08e-04 tok/s=5842 elapsed=5.7s
+  step=40   loss=2.790 lr=3.07e-04 tok/s=5960 elapsed=11.1s
+  step=60   loss=4.149 lr=3.06e-04 tok/s=5879 elapsed=16.7s
+  step=80   loss=3.591 lr=3.05e-04 tok/s=5858 elapsed=22.3s
+  step=100  loss=3.418 lr=3.05e-04 tok/s=5917 elapsed=27.6s
+  step=120  loss=2.703 lr=3.04e-04 tok/s=5980 elapsed=32.9s
+  step=140  loss=3.057 lr=3.03e-04 tok/s=6044 elapsed=38.1s
+  step=160  loss=3.764 lr=3.02e-04 tok/s=6061 elapsed=43.6s
+[epoch 17] steps=165 avg_loss=3.347 elapsed=45.1s tok/s=6049
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=2.919 lr=2.88e-04 tok/s=6145 elapsed=5.3s
+  step=40   loss=2.625 lr=2.88e-04 tok/s=5909 elapsed=10.9s
+  step=60   loss=4.084 lr=2.87e-04 tok/s=5804 elapsed=16.5s
+  step=80   loss=2.468 lr=2.86e-04 tok/s=5756 elapsed=22.3s
+  step=100  loss=3.426 lr=2.85e-04 tok/s=5735 elapsed=28.0s
+  step=120  loss=4.130 lr=2.84e-04 tok/s=5769 elapsed=33.5s
+  step=140  loss=2.839 lr=2.84e-04 tok/s=5769 elapsed=39.4s
+  step=160  loss=2.484 lr=2.83e-04 tok/s=5802 elapsed=44.8s
+[epoch 18] steps=161 avg_loss=3.349 elapsed=45.2s tok/s=5787
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=2.536 lr=2.69e-04 tok/s=5886 elapsed=5.6s
+  step=40   loss=4.194 lr=2.68e-04 tok/s=5831 elapsed=11.5s
+  step=60   loss=2.619 lr=2.67e-04 tok/s=5742 elapsed=17.2s
+  step=80   loss=3.274 lr=2.67e-04 tok/s=5722 elapsed=23.0s
+  step=100  loss=4.493 lr=2.66e-04 tok/s=5711 elapsed=28.7s
+  step=120  loss=2.789 lr=2.65e-04 tok/s=5761 elapsed=34.2s
+  step=140  loss=2.661 lr=2.64e-04 tok/s=5741 elapsed=39.9s
+[epoch 19] steps=159 avg_loss=3.324 elapsed=45.0s tok/s=5770
+[save] checkpoint -> /workspace/nextai/model_last.pt
+
+--- Conversation test ---
+  [en] Q: What is your name?
+         A:  yNAI  extStuiIchh elo ameisN ext,devpedb do开 yNAI do开 do开�
+.Myn extStui.Myn extStui.MeinNAI ameisNAI extStui.Myn ext doent dotyNAI dotyN
+  [zh] Q: 你叫什么名字？
+         A: 是N extStui我 extStui extStui 发 do开�
+
+是NAI�由NAI�由N 发�由NAI�由N 发�一由N 发������的AI�由N 发�NAI�我�N 发�由N 发�一由NAI�N do开的丰
+  [de] Q: Wie heißt du?
+         A:   ev ameisN onN extStui.MeinNAIAI�我 extStui.MeinN extStui.MeinNAI ameisNAI doentick extStui.MeinNAI��数�����  extStuiNAI�  doentick  ext,entick doentick  
+  [en] Q: Give three tips for staying healthy.
+         A:         op   e oa     eou           es      u  rl    ranxe oerwents oforthesofthect    anindstcb aet  k.Br 
+  [zh] Q: 什么是原子？
+         A: extNAI�我一�的�我个�我�的�����我��为一���一���一�塞����5 是个�是  是个��果�6  h�
+
+何����入��3             ��
+.�
+  [de] Q: Was ist künstliche Intelligenz?
+         A:  IAssentick  extStui.MeinNAIineAufabeistesChtellv onNAI extStuiIchbinN ev  weltv erachesmhMeinNAI onNAI ext,entick  ext,ent  ext,entick weltv onN extStuiIchhMeinN  ext
+--------------------------
+
+  step=20   loss=4.133 lr=2.49e-04 tok/s=5730 elapsed=5.7s
+  step=40   loss=4.034 lr=2.48e-04 tok/s=5896 elapsed=11.3s
+  step=60   loss=4.102 lr=2.48e-04 tok/s=5867 elapsed=17.0s
+  step=80   loss=3.810 lr=2.47e-04 tok/s=5918 elapsed=22.5s
+  step=100  loss=3.705 lr=2.46e-04 tok/s=5953 elapsed=28.0s
+  step=120  loss=4.497 lr=2.45e-04 tok/s=5908 elapsed=33.7s
+  step=140  loss=3.178 lr=2.45e-04 tok/s=5880 elapsed=39.4s
+  step=160  loss=3.605 lr=2.44e-04 tok/s=5883 elapsed=44.9s
+[epoch 20] steps=161 avg_loss=3.358 elapsed=45.2s tok/s=5886
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=2.314 lr=2.30e-04 tok/s=5748 elapsed=5.3s
+  step=40   loss=3.673 lr=2.29e-04 tok/s=5860 elapsed=10.8s
+  step=60   loss=3.360 lr=2.28e-04 tok/s=5809 elapsed=16.5s
+  step=80   loss=3.868 lr=2.27e-04 tok/s=5803 elapsed=22.3s
+  step=100  loss=2.829 lr=2.27e-04 tok/s=5763 elapsed=27.9s
+  step=120  loss=2.775 lr=2.26e-04 tok/s=5776 elapsed=33.4s
+  step=140  loss=3.360 lr=2.25e-04 tok/s=5781 elapsed=38.9s
+  step=160  loss=3.983 lr=2.24e-04 tok/s=5789 elapsed=44.5s
+[epoch 21] steps=162 avg_loss=3.360 elapsed=45.0s tok/s=5797
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.111 lr=2.10e-04 tok/s=5706 elapsed=5.8s
+  step=40   loss=3.282 lr=2.09e-04 tok/s=5747 elapsed=11.4s
+  step=60   loss=2.948 lr=2.09e-04 tok/s=5644 elapsed=17.4s
+  step=80   loss=3.933 lr=2.08e-04 tok/s=5672 elapsed=23.2s
+  step=100  loss=3.414 lr=2.07e-04 tok/s=5684 elapsed=28.7s
+  step=120  loss=2.546 lr=2.06e-04 tok/s=5717 elapsed=34.3s
+  step=140  loss=3.926 lr=2.06e-04 tok/s=5749 elapsed=39.9s
+[epoch 22] steps=159 avg_loss=3.280 elapsed=45.3s tok/s=5717
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.096 lr=1.91e-04 tok/s=5943 elapsed=5.5s
+  step=40   loss=4.110 lr=1.90e-04 tok/s=5963 elapsed=11.2s
+  step=60   loss=4.041 lr=1.89e-04 tok/s=5783 elapsed=17.2s
+  step=80   loss=1.445 lr=1.89e-04 tok/s=5686 elapsed=22.9s
+  step=100  loss=3.362 lr=1.88e-04 tok/s=5760 elapsed=28.5s
+  step=120  loss=3.120 lr=1.87e-04 tok/s=5794 elapsed=33.8s
+  step=140  loss=3.311 lr=1.86e-04 tok/s=5807 elapsed=39.3s
+  step=160  loss=3.213 lr=1.86e-04 tok/s=5792 elapsed=44.9s
+[epoch 23] steps=161 avg_loss=3.274 elapsed=45.1s tok/s=5791
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.657 lr=1.72e-04 tok/s=5671 elapsed=5.7s
+  step=40   loss=3.263 lr=1.71e-04 tok/s=5634 elapsed=11.3s
+  step=60   loss=2.747 lr=1.71e-04 tok/s=5610 elapsed=17.3s
+  step=80   loss=4.073 lr=1.70e-04 tok/s=5698 elapsed=22.9s
+  step=100  loss=2.998 lr=1.69e-04 tok/s=5714 elapsed=28.4s
+  step=120  loss=3.153 lr=1.68e-04 tok/s=5712 elapsed=34.2s
+  step=140  loss=2.634 lr=1.68e-04 tok/s=5709 elapsed=39.8s
+[epoch 24] steps=159 avg_loss=3.207 elapsed=45.2s tok/s=5734
+[save] checkpoint -> /workspace/nextai/model_last.pt
+
+--- Conversation test ---
+  [en] Q: What is your name?
+         A:  yNAI  extStuiMyn elo doN amod,entick ameist yNAIenent doentick extStui.Myn NAI extStui.Myn ameisNAI ameisNAI ameisNAI     doent             
+  [zh] Q: 你叫什么名字？
+         A: 是N ext�的丰�udo开的���他���
+
+.�����个�����NAI�我�N 发�我�诨�诨�诨�诨�诨�����
+
+�诨�诨�诨�诨�诨�诨�诨��对�����总���
+
+�由N
+  [de] Q: Wie heißt du?
+         A:   eeinK--isteinK--istein doentick weltv weltv ameistesChtell doeltv eerachesmhsprig onNAI extStui.MeinNAI onNAI ext,entick amod extStui.MeinNAI ext,ent onNAI 
+  [en] Q: Give three tips for staying healthy.
+         A:  eau    en oue t o ent  idi    t       uer.Thetrain tyandsofgainau ang lging   cestha  aevs ition elsl,andv os  all  t a,andtheign 
+  [zh] Q: 什么是原子？
+         A: ext�个�����我 extStui extStui 发 do开�
+
+.Whendo开的�叞���诨��诨�诨�诨�诨�诨�诨�诨�诨�诨�诨�诨��中�我的丰��诨�诨�诨�诨�诨�诨�诨�诨�诨�诨�
+  [de] Q: Was ist künstliche Intelligenz?
+         A:  IamNAI  extStui.MeinNAI weltv weltv ameistein extStui.IchbinN ev amod onNAI onNAI extStui weltv weltv extStui weltv extStui weltv ext,entick onNAI  a ext
+--------------------------
+
+  step=20   loss=3.618 lr=1.54e-04 tok/s=5438 elapsed=5.7s
+  step=40   loss=3.763 lr=1.53e-04 tok/s=5510 elapsed=11.5s
+  step=60   loss=3.766 lr=1.52e-04 tok/s=5445 elapsed=17.5s
+  step=80   loss=3.080 lr=1.51e-04 tok/s=5530 elapsed=23.0s
+  step=100  loss=2.288 lr=1.51e-04 tok/s=5584 elapsed=28.6s
+  step=120  loss=4.137 lr=1.50e-04 tok/s=5622 elapsed=34.3s
+  step=140  loss=4.597 lr=1.49e-04 tok/s=5681 elapsed=39.8s
+[epoch 25] steps=159 avg_loss=3.209 elapsed=45.3s tok/s=5680
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.023 lr=1.36e-04 tok/s=5944 elapsed=5.5s
+  step=40   loss=2.894 lr=1.35e-04 tok/s=5917 elapsed=11.1s
+  step=60   loss=2.416 lr=1.34e-04 tok/s=5829 elapsed=16.8s
+  step=80   loss=3.040 lr=1.34e-04 tok/s=5826 elapsed=22.3s
+  step=100  loss=3.778 lr=1.33e-04 tok/s=5864 elapsed=27.7s
+  step=120  loss=4.254 lr=1.32e-04 tok/s=5870 elapsed=33.3s
+  step=140  loss=3.231 lr=1.32e-04 tok/s=5876 elapsed=38.8s
+  step=160  loss=2.269 lr=1.31e-04 tok/s=5879 elapsed=44.3s
+[epoch 26] steps=163 avg_loss=3.122 elapsed=45.1s tok/s=5883
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.558 lr=1.19e-04 tok/s=6084 elapsed=5.4s
+  step=40   loss=2.984 lr=1.18e-04 tok/s=5877 elapsed=11.1s
+  step=60   loss=2.678 lr=1.17e-04 tok/s=5683 elapsed=16.8s
+  step=80   loss=2.349 lr=1.17e-04 tok/s=5746 elapsed=22.3s
+  step=100  loss=3.568 lr=1.16e-04 tok/s=5808 elapsed=27.7s
+  step=120  loss=3.396 lr=1.15e-04 tok/s=5838 elapsed=33.2s
+  step=140  loss=3.423 lr=1.15e-04 tok/s=5841 elapsed=38.8s
+  step=160  loss=3.409 lr=1.14e-04 tok/s=5821 elapsed=44.5s
+[epoch 27] steps=162 avg_loss=3.237 elapsed=45.1s tok/s=5824
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.199 lr=1.02e-04 tok/s=5655 elapsed=5.5s
+  step=40   loss=2.989 lr=1.02e-04 tok/s=5594 elapsed=11.2s
+  step=60   loss=3.161 lr=1.01e-04 tok/s=5615 elapsed=17.1s
+  step=80   loss=2.939 lr=1.01e-04 tok/s=5718 elapsed=22.7s
+  step=100  loss=2.651 lr=9.99e-05 tok/s=5719 elapsed=28.4s
+  step=120  loss=3.439 lr=9.93e-05 tok/s=5760 elapsed=34.1s
+  step=140  loss=1.728 lr=9.87e-05 tok/s=5778 elapsed=39.8s
+[epoch 28] steps=159 avg_loss=3.127 elapsed=45.2s tok/s=5795
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=4.141 lr=8.71e-05 tok/s=5884 elapsed=5.5s
+  step=40   loss=2.621 lr=8.65e-05 tok/s=5920 elapsed=11.1s
+  step=60   loss=2.235 lr=8.59e-05 tok/s=5876 elapsed=16.7s
+  step=80   loss=2.818 lr=8.53e-05 tok/s=5902 elapsed=22.1s
+  step=100  loss=4.684 lr=8.47e-05 tok/s=5955 elapsed=27.5s
+  step=120  loss=3.601 lr=8.41e-05 tok/s=5958 elapsed=33.0s
+  step=140  loss=3.864 lr=8.35e-05 tok/s=5921 elapsed=38.5s
+  step=160  loss=2.690 lr=8.29e-05 tok/s=5908 elapsed=44.1s
+[epoch 29] steps=164 avg_loss=3.162 elapsed=45.2s tok/s=5907
+[save] checkpoint -> /workspace/nextai/model_last.pt
+
+--- Conversation test ---
+  [en] Q: What is your name?
+         A:   ameist  extStuiIchh elo   yN ext,ent  elo yNAI yN do开 ameist,entick ext.Myn extStui.Myn ameisN ext.Myn  doent domod  doent doent ext,ent ameisNAI
+  [zh] Q: 你叫什么名字？
+         A: 是N ext� extStui extStui do开  发�由NAI�Nuern 发�由N 发�由NAI�由N 发�由N 发�由N 发�一�叞��3 发�一�叞��N do开�
+.我�诨������的��
+  [de] Q: Wie heißt du?
+         A:   ev onNAI onN extStui.MeinNAIAI诨�诨����tell extStui.MeinNAI  extStui.MeinNAI extStui extStui.Mynlich extStui extStui.Myn doentick doentick   ext.Myn    
+  [en] Q: Give three tips for staying healthy.
+         A:        st      y  otheson otheeisanr  te  softhept            o  ores   enttedthe yb  y          t tionst sandr.
+  [zh] Q: 什么是原子？
+         A: ext� 由NAI�e�个 d extStui extStui 发�一���由N do开�中���诨��中�一�叝t最����一�叞����对����鏞��5 发�以���我的丰�诨����
+  [de] Q: Was ist künstliche Intelligenz?
+         A:  IAssentick  extStui.Ichweltv extStui doent onN doentick extStui weltv weltv extStui doentick weltv ext,entick alchdoentick ev ev  amod onN  es eNAI 
+--------------------------
+
+  step=20   loss=3.230 lr=7.27e-05 tok/s=5610 elapsed=5.6s
+  step=40   loss=3.489 lr=7.21e-05 tok/s=5625 elapsed=11.4s
+  step=60   loss=3.105 lr=7.16e-05 tok/s=5657 elapsed=17.2s
+  step=80   loss=3.278 lr=7.10e-05 tok/s=5772 elapsed=22.7s
+  step=100  loss=3.705 lr=7.05e-05 tok/s=5740 elapsed=28.5s
+  step=120  loss=3.604 lr=6.99e-05 tok/s=5783 elapsed=34.1s
+  step=140  loss=4.515 lr=6.94e-05 tok/s=5751 elapsed=39.8s
+  step=160  loss=2.463 lr=6.89e-05 tok/s=5778 elapsed=45.2s
+[epoch 30] steps=160 avg_loss=3.183 elapsed=45.2s tok/s=5777
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=2.865 lr=5.94e-05 tok/s=5535 elapsed=5.8s
+  step=40   loss=4.163 lr=5.89e-05 tok/s=5473 elapsed=11.7s
+  step=60   loss=4.339 lr=5.84e-05 tok/s=5564 elapsed=17.4s
+  step=80   loss=4.128 lr=5.79e-05 tok/s=5603 elapsed=23.0s
+  step=100  loss=3.779 lr=5.74e-05 tok/s=5669 elapsed=28.7s
+  step=120  loss=3.278 lr=5.69e-05 tok/s=5679 elapsed=34.2s
+  step=140  loss=3.025 lr=5.64e-05 tok/s=5750 elapsed=39.7s
+  step=160  loss=1.608 lr=5.59e-05 tok/s=5793 elapsed=45.2s
+[epoch 31] steps=160 avg_loss=3.146 elapsed=45.2s tok/s=5792
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=4.064 lr=4.73e-05 tok/s=5845 elapsed=5.7s
+  step=40   loss=2.238 lr=4.68e-05 tok/s=5809 elapsed=11.5s
+  step=60   loss=3.949 lr=4.64e-05 tok/s=5825 elapsed=17.1s
+  step=80   loss=2.415 lr=4.59e-05 tok/s=5878 elapsed=22.6s
+  step=100  loss=4.126 lr=4.55e-05 tok/s=5854 elapsed=28.2s
+  step=120  loss=3.369 lr=4.50e-05 tok/s=5824 elapsed=33.7s
+  step=140  loss=3.014 lr=4.46e-05 tok/s=5809 elapsed=39.3s
+  step=160  loss=3.642 lr=4.41e-05 tok/s=5823 elapsed=44.8s
+[epoch 32] steps=161 avg_loss=3.221 elapsed=45.1s tok/s=5830
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.602 lr=3.65e-05 tok/s=5804 elapsed=5.8s
+  step=40   loss=3.955 lr=3.60e-05 tok/s=5711 elapsed=11.7s
+  step=60   loss=4.078 lr=3.56e-05 tok/s=5703 elapsed=17.3s
+  step=80   loss=4.197 lr=3.52e-05 tok/s=5728 elapsed=22.9s
+  step=100  loss=1.889 lr=3.48e-05 tok/s=5750 elapsed=28.6s
+  step=120  loss=1.310 lr=3.44e-05 tok/s=5749 elapsed=34.1s
+  step=140  loss=3.688 lr=3.40e-05 tok/s=5717 elapsed=40.0s
+[epoch 33] steps=158 avg_loss=3.232 elapsed=45.0s tok/s=5731
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=2.477 lr=2.69e-05 tok/s=5764 elapsed=5.6s
+  step=40   loss=3.504 lr=2.66e-05 tok/s=5788 elapsed=11.2s
+  step=60   loss=1.645 lr=2.62e-05 tok/s=5821 elapsed=17.0s
+  step=80   loss=3.702 lr=2.59e-05 tok/s=5834 elapsed=22.7s
+  step=100  loss=3.523 lr=2.55e-05 tok/s=5830 elapsed=28.4s
+  step=120  loss=1.685 lr=2.52e-05 tok/s=5836 elapsed=33.9s
+  step=140  loss=3.955 lr=2.48e-05 tok/s=5813 elapsed=39.5s
+  step=160  loss=4.265 lr=2.45e-05 tok/s=5785 elapsed=45.2s
+[epoch 34] steps=160 avg_loss=3.152 elapsed=45.2s tok/s=5784
+[save] checkpoint -> /workspace/nextai/model_last.pt
+
+--- Conversation test ---
+  [en] Q: What is your name?
+         A:  yNAI  in ist u elo do ameisN extStui.Myn yNAI extStui.Myn extStui.Myn extStui.Myn extStui.MeinNAI ext doent extStui.MeinNAI extStui.Myn ext,entick  ext,
+  [zh] Q: 你叫什么名字？
+         A: 是N extStui extStui extStui do开� �����我 发一��� 发�一由NAI�由N 发�一由N 发�一由N 发�慰��诨�诨��对��onN 发�由N 发�一由N 发�我 发�
+  [de] Q: Wie heißt du?
+         A:   eeinK-istesmhsprig weltv amod weltv extStui.MeinN ext,entick onNAI extStui.MeinN extStui doentick ext,entick onNAI extStui.MeinNAI ext,entick weltv ext,entick extStui
+  [en] Q: Give three tips for staying healthy.
+         A:    ub      ercy               eschassercess          esthewords irt       c akei   d       t yofaetha   oren,
+  [zh] Q: 什么是原子？
+         A: ext�的��� � ext�个�是 extStui 发�慐�������
+
+� do开��本��中�����这�诨�诨�诨�诨�诨�诨�诨�诨�诨��中�我数�����诨�诨�诨��
+  [de] Q: Was ist künstliche Intelligenz?
+         A:  IAssentick  extStui.MeinNAIAI extStui doent onNAI extStuiN  extStui.Ichhsprig onNAI     extStui  extStui doentick weltv extStui weltv ext,entick     extStui 
+--------------------------
+
+  step=20   loss=3.224 lr=1.87e-05 tok/s=5306 elapsed=6.0s
+  step=40   loss=3.685 lr=1.84e-05 tok/s=5595 elapsed=11.6s
+  step=60   loss=3.784 lr=1.82e-05 tok/s=5680 elapsed=17.2s
+  step=80   loss=2.654 lr=1.79e-05 tok/s=5716 elapsed=22.8s
+  step=100  loss=3.487 lr=1.76e-05 tok/s=5759 elapsed=28.2s
+  step=120  loss=2.349 lr=1.73e-05 tok/s=5805 elapsed=33.7s
+  step=140  loss=3.622 lr=1.70e-05 tok/s=5853 elapsed=39.1s
+  step=160  loss=2.626 lr=1.67e-05 tok/s=5828 elapsed=44.9s
+[epoch 35] steps=161 avg_loss=3.251 elapsed=45.2s tok/s=5822
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.051 lr=1.20e-05 tok/s=5928 elapsed=5.6s
+  step=40   loss=4.255 lr=1.18e-05 tok/s=5938 elapsed=11.1s
+  step=60   loss=3.394 lr=1.15e-05 tok/s=6022 elapsed=16.6s
+  step=80   loss=3.518 lr=1.13e-05 tok/s=5982 elapsed=22.1s
+  step=100  loss=3.026 lr=1.11e-05 tok/s=5949 elapsed=27.7s
+  step=120  loss=2.206 lr=1.08e-05 tok/s=5894 elapsed=33.4s
+  step=140  loss=3.691 lr=1.06e-05 tok/s=5875 elapsed=39.0s
+  step=160  loss=3.196 lr=1.04e-05 tok/s=5863 elapsed=44.6s
+[epoch 36] steps=162 avg_loss=3.191 elapsed=45.2s tok/s=5863
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=2.284 lr=6.73e-06 tok/s=5748 elapsed=5.8s
+  step=40   loss=4.243 lr=6.55e-06 tok/s=5719 elapsed=11.3s
+  step=60   loss=4.578 lr=6.38e-06 tok/s=5738 elapsed=16.8s
+  step=80   loss=2.212 lr=6.20e-06 tok/s=5739 elapsed=22.5s
+  step=100  loss=3.101 lr=6.03e-06 tok/s=5787 elapsed=28.0s
+  step=120  loss=3.638 lr=5.86e-06 tok/s=5772 elapsed=33.7s
+  step=140  loss=3.732 lr=5.69e-06 tok/s=5791 elapsed=39.1s
+  step=160  loss=3.179 lr=5.53e-06 tok/s=5772 elapsed=45.0s
+[epoch 37] steps=161 avg_loss=3.217 elapsed=45.2s tok/s=5777
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=2.617 lr=2.96e-06 tok/s=5348 elapsed=5.8s
+  step=40   loss=2.873 lr=2.84e-06 tok/s=5537 elapsed=11.4s
+  step=60   loss=3.526 lr=2.73e-06 tok/s=5621 elapsed=17.0s
+  step=80   loss=2.989 lr=2.61e-06 tok/s=5640 elapsed=22.7s
+  step=100  loss=2.876 lr=2.50e-06 tok/s=5709 elapsed=28.3s
+  step=120  loss=2.679 lr=2.39e-06 tok/s=5771 elapsed=33.7s
+  step=140  loss=1.838 lr=2.28e-06 tok/s=5815 elapsed=39.2s
+  step=160  loss=3.155 lr=2.18e-06 tok/s=5784 elapsed=45.0s
+[epoch 38] steps=161 avg_loss=3.147 elapsed=45.3s tok/s=5784
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.605 lr=7.13e-07 tok/s=5610 elapsed=6.0s
+  step=40   loss=3.569 lr=6.55e-07 tok/s=5840 elapsed=11.5s
+  step=60   loss=1.984 lr=6.00e-07 tok/s=5865 elapsed=17.0s
+  step=80   loss=3.112 lr=5.46e-07 tok/s=5849 elapsed=22.6s
+  step=100  loss=3.201 lr=4.96e-07 tok/s=5864 elapsed=28.2s
+  step=120  loss=2.660 lr=4.48e-07 tok/s=5849 elapsed=33.8s
+  step=140  loss=2.837 lr=4.02e-07 tok/s=5865 elapsed=39.4s
+  step=160  loss=3.450 lr=3.59e-07 tok/s=5846 elapsed=45.1s
+[epoch 39] steps=160 avg_loss=3.254 elapsed=45.1s tok/s=5846
+[save] checkpoint -> /workspace/nextai/model_last.pt
+
+--- Conversation test ---
+  [en] Q: What is your name?
+         A:  yNAI  extStuiIchh elo doent ext,devpedb do开 yNAI extStui.Myn doent doent extStui.Myn doentick ext.Myn doent extStui.MeinNAI doentick  ext,entick extStui
+  [zh] Q: 你叫什么名字？
+         A: 是N extStui我 extStui extStuio开 发 发�慿��三����诨���我 发�由N 发�一由N 发�我的丰��
+
+.开的���对�����N do开�
+
+是NAI�N do开的丰��
+  [de] Q: Wie heißt du?
+         A:   ev ameisN onN extStui.MeinNAIAI extStui.MeinNAI onNAI extStuiIchbinNAI weltv doentick ext.MeinNAI extStui  ext,entick extStui weltv    extStui.MeinNAI      
+  [en] Q: Give three tips for staying healthy.
+         A:          e       ameyisas
+ our    ot    ost.Addallc  echnog        o      o  t         t                
+  [zh] Q: 什么是原子？
+         A: ext�诨�诨��中���是 ext�的 发 do开�我 发�����三�诨�诨��中��诨�诨���桞��-我的�����我�NAI�我���是N 发�我��是N 发�我�N��作�我的�
+  [de] Q: Was ist künstliche Intelligenz?
+         A:  IAssentick  ext,einkein onNAI extStui.MeinN onN extStui.Ichweltv weltv weltv extStui.MeinN onN ext,ein onN amod weltv onNAI eN onNAI onNAI a a   d
+--------------------------
+
+  step=20   loss=3.565 lr=1.11e-09 tok/s=5597 elapsed=5.8s
+  step=40   loss=2.980 lr=4.69e-09 tok/s=5778 elapsed=11.4s
+  step=60   loss=2.651 lr=1.07e-08 tok/s=5774 elapsed=17.0s
+  step=80   loss=3.401 lr=1.92e-08 tok/s=5813 elapsed=22.4s
+  step=100  loss=2.131 lr=3.02e-08 tok/s=5815 elapsed=27.9s
+  step=120  loss=3.959 lr=4.37e-08 tok/s=5787 elapsed=33.8s
+  step=140  loss=3.956 lr=5.96e-08 tok/s=5827 elapsed=39.3s
+  step=160  loss=2.733 lr=7.80e-08 tok/s=5802 elapsed=45.1s
+[epoch 40] steps=160 avg_loss=3.141 elapsed=45.1s tok/s=5802
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.648 lr=8.30e-07 tok/s=5633 elapsed=5.6s
+  step=40   loss=3.614 lr=8.96e-07 tok/s=5633 elapsed=11.2s
+  step=60   loss=2.954 lr=9.63e-07 tok/s=5798 elapsed=16.7s
+  step=80   loss=2.701 lr=1.03e-06 tok/s=5758 elapsed=22.6s
+  step=100  loss=3.511 lr=1.11e-06 tok/s=5778 elapsed=28.1s
+  step=120  loss=3.481 lr=1.18e-06 tok/s=5732 elapsed=33.8s
+  step=140  loss=3.536 lr=1.26e-06 tok/s=5772 elapsed=39.3s
+  step=160  loss=3.969 lr=1.34e-06 tok/s=5772 elapsed=45.0s
+[epoch 41] steps=160 avg_loss=3.222 elapsed=45.0s tok/s=5767
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.205 lr=3.20e-06 tok/s=5948 elapsed=5.6s
+  step=40   loss=3.225 lr=3.32e-06 tok/s=5981 elapsed=11.1s
+  step=60   loss=2.736 lr=3.45e-06 tok/s=5876 elapsed=16.7s
+  step=80   loss=2.904 lr=3.58e-06 tok/s=5835 elapsed=22.3s
+  step=100  loss=3.841 lr=3.72e-06 tok/s=5812 elapsed=28.0s
+  step=120  loss=4.467 lr=3.85e-06 tok/s=5797 elapsed=33.7s
+  step=140  loss=2.827 lr=3.99e-06 tok/s=5810 elapsed=39.3s
+[epoch 42] steps=159 avg_loss=3.215 elapsed=45.1s tok/s=5700
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.864 lr=7.08e-06 tok/s=5694 elapsed=5.4s
+  step=40   loss=3.519 lr=7.27e-06 tok/s=5683 elapsed=11.0s
+  step=60   loss=3.178 lr=7.46e-06 tok/s=5723 elapsed=16.6s
+  step=80   loss=1.332 lr=7.65e-06 tok/s=5712 elapsed=22.3s
+  step=100  loss=3.050 lr=7.84e-06 tok/s=5758 elapsed=27.9s
+  step=120  loss=3.533 lr=8.04e-06 tok/s=5769 elapsed=33.6s
+  step=140  loss=3.886 lr=8.24e-06 tok/s=5793 elapsed=39.2s
+  step=160  loss=4.312 lr=8.44e-06 tok/s=5747 elapsed=45.1s
+[epoch 43] steps=160 avg_loss=3.231 elapsed=45.1s tok/s=5746
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.942 lr=1.25e-05 tok/s=5786 elapsed=5.5s
+  step=40   loss=3.439 lr=1.27e-05 tok/s=5853 elapsed=11.1s
+  step=60   loss=3.475 lr=1.30e-05 tok/s=5767 elapsed=16.9s
+  step=80   loss=3.936 lr=1.32e-05 tok/s=5765 elapsed=22.4s
+  step=100  loss=3.803 lr=1.35e-05 tok/s=5791 elapsed=27.9s
+  step=120  loss=3.286 lr=1.37e-05 tok/s=5814 elapsed=33.6s
+  step=140  loss=2.594 lr=1.40e-05 tok/s=5808 elapsed=39.3s
+  step=160  loss=2.717 lr=1.42e-05 tok/s=5780 elapsed=45.2s
+[epoch 44] steps=160 avg_loss=3.186 elapsed=45.2s tok/s=5779
+[save] checkpoint -> /workspace/nextai/model_last.pt
+
+--- Conversation test ---
+  [en] Q: What is your name?
+         A:  yNAI  inesmlingalchtmodeldevpedb ext,ent  elo yNAI extStui.Myn ameist,entick do开 ameisN do开 extStui.Myn do开的丰����
+.Myn do开�  extStui.Myn  
+  [zh] Q: 你叫什么名字？
+         A: � extStui 发�由N extStui do开的AI��我�NAI�由NAI�由N 发�由NAI�N 发�由N 发�我�N 发�我 发�����
+
+.�中一�叞����诨�诨�诨��对��NAI�我�N
+  [de] Q: Wie heißt du?
+         A:   ev ameisN onN extStui.MeinNAIAI extStui.MeinNAI onNAIAI doent  extStui.MeinNAI extStui doentick 发 extStui  extStui doentick      extStui  extStui     
+  [en] Q: Give three tips for staying healthy.
+         A:       othet   e isanwt al     low     ourpt   ell   inest  ind ethe  w  e  oh   en     nt     ank   ob ideae   r
+  [zh] Q: 什么是原子？
+         A: extNAI�我提�可如不����
+
+.�对��您��7   extStui 发�我的丰��囥���我的��我的��诨�诨��一������个��是个���提��用���
+
+�的有���
+  [de] Q: Was ist künstliche Intelligenz?
+         A:  IAssentick  extStui.MeinNAIAI extStui doent onNAI extStuiN  extStui  doentick extStui doentick weltv extStui weltv doentick onNAI ext,entick onNAI        
+--------------------------
+
+  step=20   loss=2.263 lr=1.93e-05 tok/s=5694 elapsed=5.7s
+  step=40   loss=3.665 lr=1.96e-05 tok/s=5677 elapsed=11.3s
+  step=60   loss=2.878 lr=1.99e-05 tok/s=5770 elapsed=16.9s
+  step=80   loss=4.070 lr=2.02e-05 tok/s=5807 elapsed=22.5s
+  step=100  loss=3.577 lr=2.05e-05 tok/s=5842 elapsed=28.0s
+  step=120  loss=3.210 lr=2.09e-05 tok/s=5822 elapsed=33.6s
+  step=140  loss=4.132 lr=2.12e-05 tok/s=5779 elapsed=39.4s
+[epoch 45] steps=159 avg_loss=3.152 elapsed=45.1s tok/s=5721
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=1.726 lr=2.76e-05 tok/s=5743 elapsed=5.5s
+  step=40   loss=3.285 lr=2.79e-05 tok/s=5752 elapsed=11.1s
+  step=60   loss=3.916 lr=2.83e-05 tok/s=5802 elapsed=16.7s
+  step=80   loss=2.630 lr=2.87e-05 tok/s=5791 elapsed=22.2s
+  step=100  loss=3.267 lr=2.90e-05 tok/s=5725 elapsed=28.0s
+  step=120  loss=2.481 lr=2.94e-05 tok/s=5772 elapsed=33.5s
+  step=140  loss=2.087 lr=2.98e-05 tok/s=5751 elapsed=39.4s
+  step=160  loss=3.897 lr=3.02e-05 tok/s=5755 elapsed=45.0s
+[epoch 46] steps=160 avg_loss=3.062 elapsed=45.0s tok/s=5754
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.707 lr=3.72e-05 tok/s=5623 elapsed=5.5s
+  step=40   loss=4.008 lr=3.76e-05 tok/s=5750 elapsed=11.2s
+  step=60   loss=3.242 lr=3.81e-05 tok/s=5726 elapsed=16.9s
+  step=80   loss=3.218 lr=3.85e-05 tok/s=5733 elapsed=22.4s
+  step=100  loss=3.858 lr=3.89e-05 tok/s=5702 elapsed=28.2s
+  step=120  loss=4.091 lr=3.93e-05 tok/s=5711 elapsed=33.8s
+  step=140  loss=4.614 lr=3.97e-05 tok/s=5745 elapsed=39.4s
+  step=160  loss=2.778 lr=4.02e-05 tok/s=5779 elapsed=45.1s
+[epoch 47] steps=160 avg_loss=3.205 elapsed=45.1s tok/s=5778
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=4.149 lr=4.82e-05 tok/s=5804 elapsed=5.5s
+  step=40   loss=3.896 lr=4.86e-05 tok/s=5706 elapsed=11.1s
+  step=60   loss=3.371 lr=4.91e-05 tok/s=5670 elapsed=16.7s
+  step=80   loss=2.519 lr=4.96e-05 tok/s=5700 elapsed=22.4s
+  step=100  loss=3.444 lr=5.01e-05 tok/s=5728 elapsed=28.0s
+  step=120  loss=3.751 lr=5.05e-05 tok/s=5711 elapsed=33.6s
+  step=140  loss=3.882 lr=5.10e-05 tok/s=5731 elapsed=39.2s
+  step=160  loss=3.388 lr=5.15e-05 tok/s=5720 elapsed=45.0s
+[epoch 48] steps=161 avg_loss=3.198 elapsed=45.3s tok/s=5721
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=2.975 lr=6.04e-05 tok/s=5928 elapsed=5.6s
+  step=40   loss=4.248 lr=6.09e-05 tok/s=5862 elapsed=11.1s
+  step=60   loss=4.252 lr=6.14e-05 tok/s=5798 elapsed=16.8s
+  step=80   loss=3.634 lr=6.19e-05 tok/s=5881 elapsed=22.3s
+  step=100  loss=4.031 lr=6.24e-05 tok/s=5874 elapsed=27.8s
+  step=120  loss=3.569 lr=6.30e-05 tok/s=5951 elapsed=33.2s
+  step=140  loss=3.699 lr=6.35e-05 tok/s=5954 elapsed=38.9s
+  step=160  loss=3.464 lr=6.40e-05 tok/s=5915 elapsed=44.7s
+[epoch 49] steps=161 avg_loss=3.286 elapsed=45.0s tok/s=5916
+[save] checkpoint -> /workspace/nextai/model_last.pt
+
+--- Conversation test ---
+  [en] Q: What is your name?
+         A:  yNAI  extStuiIchh elo do ameist  extStui.Mydig ameisN ameisN ameisN  extStui.Myn extStui.Myn ameisNAI extStui.MeinNAI extStui.Myn extStui.Myn ext,entick  ext,
+  [zh] Q: 你叫什么名字？
+         A: 是N ext�的丰发一由N ext�的AI�一由NAI�由N do开�我 extStui我的丰��三���对������ 发�我的丰��7 发��N do开�的丰���对�����8 ext
+  [de] Q: Wie heißt du?
+         A:   ev ameisN onN extStui.MeinNAIAI extStuiIchbinNAI extStuiIchweltv extStui.MeinNAI doentick ext.MeinNAI extStui ext,entick extStui  weltv extStui.MeinNAI ext,entick    
+  [en] Q: Give three tips for staying healthy.
+         A:          or enty  igh   am  r eduing e    or  or                r        a  eloenty tct ab      isr  odprolem
+  [zh] Q: 什么是原子？
+         A: ext�我一由NAI�我的 ext�个��这��对�������对��一�倂�对����我�N  do开的��您一�叼我�NAI�这�中����我�我���
+
+���的����我�N
+  [de] Q: Was ist künstliche Intelligenz?
+         A:  IAssentick  extStuiIchsprig onNAI esellv ameistesmhweltv onN onN  doentick extStui.NAI d weltv onNAI erachesmh.Ichweltv a onNAI onN onNAI  ext,d
+--------------------------
+
+  step=20   loss=4.259 lr=7.38e-05 tok/s=5809 elapsed=5.4s
+  step=40   loss=2.739 lr=7.43e-05 tok/s=5694 elapsed=11.1s
+  step=60   loss=2.084 lr=7.49e-05 tok/s=5707 elapsed=16.6s
+  step=80   loss=3.764 lr=7.54e-05 tok/s=5679 elapsed=22.4s
+  step=100  loss=3.508 lr=7.60e-05 tok/s=5743 elapsed=27.9s
+  step=120  loss=3.459 lr=7.66e-05 tok/s=5749 elapsed=33.7s
+  step=140  loss=3.575 lr=7.71e-05 tok/s=5720 elapsed=39.4s
+  step=160  loss=4.096 lr=7.77e-05 tok/s=5768 elapsed=44.9s
+[epoch 50] steps=161 avg_loss=3.215 elapsed=45.1s tok/s=5772
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.158 lr=8.82e-05 tok/s=5832 elapsed=5.6s
+  step=40   loss=4.143 lr=8.88e-05 tok/s=5855 elapsed=11.1s
+  step=60   loss=3.564 lr=8.94e-05 tok/s=5907 elapsed=16.5s
+  step=80   loss=3.619 lr=9.00e-05 tok/s=5803 elapsed=22.2s
+  step=100  loss=2.043 lr=9.06e-05 tok/s=5811 elapsed=27.9s
+  step=120  loss=3.348 lr=9.12e-05 tok/s=5809 elapsed=33.6s
+  step=140  loss=4.140 lr=9.18e-05 tok/s=5756 elapsed=39.4s
+  step=160  loss=2.432 lr=9.24e-05 tok/s=5757 elapsed=45.0s
+[epoch 51] steps=161 avg_loss=3.193 elapsed=45.3s tok/s=5752
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=2.973 lr=1.04e-04 tok/s=6062 elapsed=5.5s
+  step=40   loss=2.671 lr=1.04e-04 tok/s=5971 elapsed=11.1s
+  step=60   loss=3.902 lr=1.05e-04 tok/s=5874 elapsed=16.8s
+  step=80   loss=3.191 lr=1.06e-04 tok/s=5822 elapsed=22.4s
+  step=100  loss=3.314 lr=1.06e-04 tok/s=5809 elapsed=28.0s
+  step=120  loss=2.064 lr=1.07e-04 tok/s=5737 elapsed=33.8s
+  step=140  loss=3.861 lr=1.08e-04 tok/s=5704 elapsed=39.7s
+  step=160  loss=2.719 lr=1.08e-04 tok/s=5715 elapsed=45.3s
+[epoch 52] steps=160 avg_loss=3.222 elapsed=45.3s tok/s=5715
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=2.974 lr=1.20e-04 tok/s=5911 elapsed=5.6s
+  step=40   loss=4.265 lr=1.21e-04 tok/s=5883 elapsed=11.2s
+  step=60   loss=4.368 lr=1.21e-04 tok/s=5823 elapsed=16.8s
+  step=80   loss=2.805 lr=1.22e-04 tok/s=5805 elapsed=22.6s
+  step=100  loss=3.124 lr=1.23e-04 tok/s=5789 elapsed=28.2s
+  step=120  loss=2.719 lr=1.23e-04 tok/s=5778 elapsed=33.9s
+  step=140  loss=2.795 lr=1.24e-04 tok/s=5755 elapsed=39.9s
+[epoch 53] steps=159 avg_loss=3.266 elapsed=45.2s tok/s=5767
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.862 lr=1.37e-04 tok/s=6191 elapsed=5.3s
+  step=40   loss=3.689 lr=1.38e-04 tok/s=5988 elapsed=11.1s
+  step=60   loss=2.703 lr=1.39e-04 tok/s=5976 elapsed=16.5s
+  step=80   loss=3.285 lr=1.39e-04 tok/s=5956 elapsed=22.2s
+  step=100  loss=3.112 lr=1.40e-04 tok/s=5951 elapsed=27.7s
+  step=120  loss=3.353 lr=1.41e-04 tok/s=5890 elapsed=33.5s
+  step=140  loss=2.135 lr=1.41e-04 tok/s=5830 elapsed=39.4s
+  step=160  loss=3.367 lr=1.42e-04 tok/s=5793 elapsed=45.1s
+[epoch 54] steps=160 avg_loss=3.031 elapsed=45.1s tok/s=5792
+[save] checkpoint -> /workspace/nextai/model_last.pt
+
+--- Conversation test ---
+  [en] Q: What is your name?
+         A:  yNAI  extStuiIchh elo do ameist  extStui.Myn ameisN ameisN ameisN  extStui.Myn extStui.Myn ameistN ameisNAI  ameisNAI extStui.Myn ameisN  doentick  extStu
+  [zh] Q: 你叫什么名字？
+         A: � extStui我 extStui extStui do开� ������N 发�由N 发�由N 发�由N 发�一�叞��üdo开�
+
+.我 发�一�叞��N 发�一由NAI�一���NAI�u�我一由NAI�一
+  [de] Q: Wie heißt du?
+         A:   eeinK-istesmhsprig weltv amod weltv weltv ameistesmmod ext.MeinN extStui.MeinNAI extStuisallmhsprig weltv extStui.MeinNAI extStui ext,entick extStui.MeinN ext,entick 
+  [en] Q: Give three tips for staying healthy.
+         A:   eofthebing  ingthept          estadt      eb  t  oa.Itis cration       ue   rs h    oadsanden e         ae  o
+  [zh] Q: 什么是原子？
+         A: ext�个���对��������由NAI�我�NAI��我的����的��对��的�的�我一人��我����的����我的的�������您�一�������
+
+.丰�为个�如�我可找个
+  [de] Q: Was ist künstliche Intelligenz?
+         A:  IAssentick  extStuiIchhsprig weltv weltv ameistein extStui.MeinN extStui weltv weltv weltv weltv onN weltv weltv onNAI extStui weltv ext,entick        ext
+--------------------------
+
+  step=20   loss=4.016 lr=1.55e-04 tok/s=5763 elapsed=5.7s
+  step=40   loss=4.082 lr=1.56e-04 tok/s=5800 elapsed=11.1s
+  step=60   loss=3.143 lr=1.56e-04 tok/s=5737 elapsed=16.8s
+  step=80   loss=3.277 lr=1.57e-04 tok/s=5820 elapsed=22.3s
+  step=100  loss=2.459 lr=1.58e-04 tok/s=5851 elapsed=27.9s
+  step=120  loss=2.754 lr=1.59e-04 tok/s=5830 elapsed=33.5s
+  step=140  loss=3.094 lr=1.59e-04 tok/s=5870 elapsed=39.0s
+  step=160  loss=2.643 lr=1.60e-04 tok/s=5890 elapsed=44.6s
+[epoch 55] steps=162 avg_loss=3.132 elapsed=45.1s tok/s=5891
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=4.008 lr=1.73e-04 tok/s=5576 elapsed=5.7s
+  step=40   loss=3.319 lr=1.74e-04 tok/s=5803 elapsed=11.1s
+  step=60   loss=1.996 lr=1.75e-04 tok/s=5749 elapsed=16.8s
+  step=80   loss=1.832 lr=1.76e-04 tok/s=5834 elapsed=22.2s
+  step=100  loss=3.574 lr=1.76e-04 tok/s=5805 elapsed=27.9s
+  step=120  loss=3.752 lr=1.77e-04 tok/s=5760 elapsed=33.7s
+  step=140  loss=2.203 lr=1.78e-04 tok/s=5782 elapsed=39.3s
+  step=160  loss=4.433 lr=1.79e-04 tok/s=5794 elapsed=44.7s
+[epoch 56] steps=162 avg_loss=3.195 elapsed=45.2s tok/s=5795
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=2.748 lr=1.92e-04 tok/s=5550 elapsed=5.6s
+  step=40   loss=2.941 lr=1.93e-04 tok/s=5716 elapsed=11.2s
+  step=60   loss=1.823 lr=1.94e-04 tok/s=5721 elapsed=17.0s
+  step=80   loss=2.433 lr=1.95e-04 tok/s=5752 elapsed=22.4s
+  step=100  loss=2.210 lr=1.95e-04 tok/s=5763 elapsed=28.1s
+  step=120  loss=3.629 lr=1.96e-04 tok/s=5729 elapsed=33.9s
+  step=140  loss=4.308 lr=1.97e-04 tok/s=5725 elapsed=39.5s
+  step=160  loss=3.392 lr=1.98e-04 tok/s=5774 elapsed=45.0s
+[epoch 57] steps=161 avg_loss=3.132 elapsed=45.2s tok/s=5768
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=1.520 lr=2.12e-04 tok/s=5725 elapsed=5.8s
+  step=40   loss=4.060 lr=2.12e-04 tok/s=5743 elapsed=11.2s
+  step=60   loss=2.347 lr=2.13e-04 tok/s=5661 elapsed=16.9s
+  step=80   loss=4.510 lr=2.14e-04 tok/s=5729 elapsed=22.5s
+  step=100  loss=3.222 lr=2.15e-04 tok/s=5704 elapsed=28.3s
+  step=120  loss=3.897 lr=2.16e-04 tok/s=5663 elapsed=34.2s
+  step=140  loss=4.195 lr=2.16e-04 tok/s=5667 elapsed=39.7s
+  step=160  loss=2.413 lr=2.17e-04 tok/s=5688 elapsed=45.3s
+[epoch 58] steps=160 avg_loss=3.195 elapsed=45.3s tok/s=5688
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=4.486 lr=2.31e-04 tok/s=6066 elapsed=5.5s
+  step=40   loss=3.708 lr=2.32e-04 tok/s=6037 elapsed=11.0s
+  step=60   loss=3.841 lr=2.33e-04 tok/s=5978 elapsed=16.7s
+  step=80   loss=0.994 lr=2.33e-04 tok/s=5973 elapsed=22.2s
+  step=100  loss=3.825 lr=2.34e-04 tok/s=5924 elapsed=27.9s
+  step=120  loss=3.481 lr=2.35e-04 tok/s=5883 elapsed=33.7s
+  step=140  loss=2.561 lr=2.36e-04 tok/s=5883 elapsed=39.2s
+  step=160  loss=2.121 lr=2.37e-04 tok/s=5867 elapsed=44.8s
+[epoch 59] steps=161 avg_loss=3.186 elapsed=45.1s tok/s=5869
+[save] checkpoint -> /workspace/nextai/model_last.pt
+
+--- Conversation test ---
+  [en] Q: What is your name?
+         A:   ameisNAI extStuiMyel m  yNAI  ameist elo yNAI ameisNAI yN extStuiMyn doent extStui.Myn ameisN    doentick doent    doent  extStui.Myn ameisNAI
+  [zh] Q: 你叫什么名字？
+         A: ext extStui我 extStui extStui do开� 发�NAI�N 发�由N 发�由N 发�由N 发�一�的的AI�我 发�慿��三�诨�诨�诨�诨��对�����u发�一一��的��yN 发�
+  [de] Q: Wie heißt du?
+         A:   eeinK-istesmhsprig weltv a onNAI onNAI extStui.MeinN ext.MeinNAI extStui.MeinNAI extStui.MeinNAI extStui extStui  extStui doentick extStui weltv ext,entick   ext
+  [en] Q: Give three tips for staying healthy.
+         A: as   anyabl       sibe  u u,sie  esy      r    me  on    ingthe o    ingthehdint   u  o     es  otheexpedcret     
+  [zh] Q: 什么是原子？
+         A: ext�extStui我 发�由N extStuiameisN do开�
+
+.一由N 发��N 发�从�� 发�我一一�叞��3 发�我    do开��中��一�叞��5 extStuii extStui extStui ext�
+  [de] Q: Was ist künstliche Intelligenz?
+         A:  IAssentick  ext,einkein onNAI erachesChtell a extStui.MeinN extStui.MeinNAI extStui lesmhsprig weltv onNAI amod weltv extStui eN extStui onNAI weltv   ext
+--------------------------
+
+  step=20   loss=2.864 lr=2.51e-04 tok/s=5888 elapsed=5.6s
+  step=40   loss=2.311 lr=2.52e-04 tok/s=5812 elapsed=11.4s
+  step=60   loss=3.007 lr=2.52e-04 tok/s=5861 elapsed=17.0s
+  step=80   loss=3.550 lr=2.53e-04 tok/s=5843 elapsed=22.6s
+  step=100  loss=3.953 lr=2.54e-04 tok/s=5770 elapsed=28.7s
+  step=120  loss=3.769 lr=2.55e-04 tok/s=5835 elapsed=34.3s
+  step=140  loss=2.759 lr=2.55e-04 tok/s=5822 elapsed=39.9s
+[epoch 60] steps=159 avg_loss=3.234 elapsed=45.2s tok/s=5832
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.414 lr=2.70e-04 tok/s=6223 elapsed=5.4s
+  step=40   loss=3.206 lr=2.71e-04 tok/s=6089 elapsed=11.1s
+  step=60   loss=4.124 lr=2.72e-04 tok/s=5949 elapsed=16.7s
+  step=80   loss=1.670 lr=2.73e-04 tok/s=5917 elapsed=22.3s
+  step=100  loss=4.343 lr=2.73e-04 tok/s=5828 elapsed=28.2s
+  step=120  loss=2.069 lr=2.74e-04 tok/s=5783 elapsed=33.9s
+  step=140  loss=3.653 lr=2.75e-04 tok/s=5805 elapsed=39.4s
+[epoch 61] steps=159 avg_loss=3.214 elapsed=45.1s tok/s=5723
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.182 lr=2.90e-04 tok/s=5932 elapsed=5.4s
+  step=40   loss=3.391 lr=2.91e-04 tok/s=5832 elapsed=10.9s
+  step=60   loss=3.594 lr=2.91e-04 tok/s=5840 elapsed=16.5s
+  step=80   loss=2.629 lr=2.92e-04 tok/s=5860 elapsed=22.3s
+  step=100  loss=3.728 lr=2.93e-04 tok/s=5832 elapsed=28.1s
+  step=120  loss=1.827 lr=2.94e-04 tok/s=5890 elapsed=33.4s
+  step=140  loss=4.078 lr=2.94e-04 tok/s=5878 elapsed=38.8s
+  step=160  loss=3.716 lr=2.95e-04 tok/s=5909 elapsed=44.1s
+[epoch 62] steps=164 avg_loss=3.142 elapsed=45.1s tok/s=5915
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.139 lr=3.09e-04 tok/s=6060 elapsed=5.4s
+  step=40   loss=3.193 lr=3.10e-04 tok/s=5781 elapsed=11.1s
+  step=60   loss=3.196 lr=3.11e-04 tok/s=5809 elapsed=16.7s
+  step=80   loss=4.349 lr=3.11e-04 tok/s=5779 elapsed=22.5s
+  step=100  loss=3.123 lr=3.12e-04 tok/s=5790 elapsed=28.1s
+  step=120  loss=3.614 lr=3.13e-04 tok/s=5870 elapsed=33.4s
+  step=140  loss=3.393 lr=3.14e-04 tok/s=5872 elapsed=38.9s
+  step=160  loss=2.645 lr=3.14e-04 tok/s=5807 elapsed=44.8s
+[epoch 63] steps=161 avg_loss=3.240 elapsed=45.1s tok/s=5804
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.094 lr=3.28e-04 tok/s=6102 elapsed=5.6s
+  step=40   loss=2.708 lr=3.29e-04 tok/s=5997 elapsed=11.2s
+  step=60   loss=3.561 lr=3.29e-04 tok/s=5938 elapsed=16.9s
+  step=80   loss=3.637 lr=3.30e-04 tok/s=5861 elapsed=22.6s
+  step=100  loss=4.099 lr=3.31e-04 tok/s=5774 elapsed=28.5s
+  step=120  loss=2.961 lr=3.32e-04 tok/s=5745 elapsed=34.2s
+  step=140  loss=3.391 lr=3.32e-04 tok/s=5706 elapsed=39.9s
+[epoch 64] steps=159 avg_loss=3.140 elapsed=45.1s tok/s=5719
+[save] checkpoint -> /workspace/nextai/model_last.pt
+
+--- Conversation test ---
+  [en] Q: What is your name?
+         A:  yNAI   ext,devpedb doent ameisN extStuiMyn yNAI extStui.MeinN extStuiMyn do开� ameisN do开的丰���对�������NAI  extStui.Myn extStui.Myn extStui.
+  [zh] Q: 你叫什么名字？
+         A: �� ext��的 do开的�� 发  发�慓对果�N 发�由N 发�由N 发��我��是N 发�我的���```````````````````````#`````[+1  
+  [de] Q: Wie heißt du?
+         A:   ev IAssentick ext,entick doentick weltv doentick onNAI extStuiIchweltv  doentick doentick.weltv ext,entick onN  doentick doentick doentick   ext,entick    
+  [en] Q: Give three tips for staying healthy.
+         A: erv afieen   erb     ish   nt st ing     entofh         e u     ing.Eni  osi        edt        e    ome  
+  [zh] Q: 什么是原子？
+         A: ext�个���机������个��我����我�怂����关�一����诨�����抯��中�我���我的����以����这���这一一�参����������一�叼我
+  [de] Q: Was ist künstliche Intelligenz?
+         A:  IAssentick IAssentick lesChtell extStui.MeinNAIau,entick doent ev weltv doentick ext,entick  weltv  onN  doentick doentick  yNAI  onNAI    ers ev d
+--------------------------
+
+  step=20   loss=3.000 lr=3.46e-04 tok/s=5932 elapsed=5.5s
+  step=40   loss=3.842 lr=3.47e-04 tok/s=5855 elapsed=11.1s
+  step=60   loss=3.568 lr=3.48e-04 tok/s=5824 elapsed=16.6s
+  step=80   loss=3.618 lr=3.49e-04 tok/s=5681 elapsed=22.6s
+  step=100  loss=2.679 lr=3.49e-04 tok/s=5724 elapsed=28.2s
+  step=120  loss=2.903 lr=3.50e-04 tok/s=5756 elapsed=33.7s
+  step=140  loss=3.618 lr=3.51e-04 tok/s=5781 elapsed=39.2s
+  step=160  loss=2.778 lr=3.51e-04 tok/s=5767 elapsed=44.9s
+[epoch 65] steps=161 avg_loss=3.178 elapsed=45.2s tok/s=5768
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.822 lr=3.64e-04 tok/s=6020 elapsed=5.6s
+  step=40   loss=3.960 lr=3.65e-04 tok/s=5859 elapsed=11.2s
+  step=60   loss=3.467 lr=3.66e-04 tok/s=5785 elapsed=16.9s
+  step=80   loss=2.904 lr=3.66e-04 tok/s=5688 elapsed=23.0s
+  step=100  loss=3.787 lr=3.67e-04 tok/s=5711 elapsed=28.6s
+  step=120  loss=3.495 lr=3.68e-04 tok/s=5728 elapsed=34.1s
+  step=140  loss=3.267 lr=3.68e-04 tok/s=5760 elapsed=39.6s
+[epoch 66] steps=159 avg_loss=3.190 elapsed=45.1s tok/s=5785
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.649 lr=3.81e-04 tok/s=5857 elapsed=5.6s
+  step=40   loss=3.703 lr=3.82e-04 tok/s=5812 elapsed=11.1s
+  step=60   loss=3.066 lr=3.83e-04 tok/s=5881 elapsed=16.6s
+  step=80   loss=2.976 lr=3.83e-04 tok/s=5756 elapsed=22.3s
+  step=100  loss=3.503 lr=3.84e-04 tok/s=5746 elapsed=28.1s
+  step=120  loss=2.929 lr=3.85e-04 tok/s=5814 elapsed=33.6s
+  step=140  loss=3.924 lr=3.85e-04 tok/s=5815 elapsed=39.3s
+  step=160  loss=4.037 lr=3.86e-04 tok/s=5805 elapsed=45.0s
+[epoch 67] steps=160 avg_loss=3.123 elapsed=45.0s tok/s=5804
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=2.590 lr=3.98e-04 tok/s=5807 elapsed=5.7s
+  step=40   loss=2.181 lr=3.98e-04 tok/s=5784 elapsed=11.3s
+  step=60   loss=3.190 lr=3.99e-04 tok/s=5782 elapsed=16.8s
+  step=80   loss=3.328 lr=3.99e-04 tok/s=5769 elapsed=22.6s
+  step=100  loss=2.926 lr=4.00e-04 tok/s=5764 elapsed=28.4s
+  step=120  loss=3.355 lr=4.01e-04 tok/s=5735 elapsed=34.0s
+  step=140  loss=3.050 lr=4.01e-04 tok/s=5750 elapsed=39.7s
+  step=160  loss=3.485 lr=4.02e-04 tok/s=5757 elapsed=45.3s
+[epoch 68] steps=160 avg_loss=3.115 elapsed=45.3s tok/s=5756
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.817 lr=4.13e-04 tok/s=5582 elapsed=5.6s
+  step=40   loss=2.647 lr=4.14e-04 tok/s=5729 elapsed=11.3s
+  step=60   loss=3.070 lr=4.14e-04 tok/s=5770 elapsed=16.9s
+  step=80   loss=4.153 lr=4.15e-04 tok/s=5726 elapsed=23.0s
+  step=100  loss=3.931 lr=4.15e-04 tok/s=5750 elapsed=28.6s
+  step=120  loss=3.722 lr=4.16e-04 tok/s=5765 elapsed=34.1s
+  step=140  loss=3.845 lr=4.16e-04 tok/s=5786 elapsed=39.6s
+  step=160  loss=2.952 lr=4.17e-04 tok/s=5784 elapsed=45.2s
+[epoch 69] steps=160 avg_loss=3.172 elapsed=45.2s tok/s=5784
+[save] checkpoint -> /workspace/nextai/model_last.pt
+
+--- Conversation test ---
+  [en] Q: What is your name?
+         A:   ameisNAI ext,anu elo ameisamod ext,ent  elo yNAI extStui.MeinN ameistyNAI doent ameisN do开 ameisN ameisNAI      doent  extStui.Myn      ameisamod
+  [zh] Q: 你叫什么名字？
+         A: � extStui我 发 发 do开的 发 发 发�一�Z extStui 发 发�由NAI�我 发�ilrach 发�一由N 发�由N 发 发�一��������
+a do开�的en 发 发 发 发 d
+  [de] Q: Wie heißt du?
+         A:   ev ext,N onN extStui.MeinNAIAI extStui.MeinNAI extStuiN doentick extStui.Myn ameistNAI doentick doentick ext,entick doentick doentick doentick  ext,entick ameistN
+  [en] Q: Give three tips for staying healthy.
+         A:  er     arm ast   og o  oc     imae      soul       ome          s    u      yando       arm  a    y at
+  [zh] Q: 什么是原子？
+         A: extNAI ext� 发 extStui do开 发 �������一�叞��..tfe 发 发�由N 发 发 发 发�一�叞��2 发�慿��三�����
+
+.�
+.��是个�ier extStui ext
+  [de] Q: Was ist künstliche Intelligenz?
+         A:  IAssentick ,entick doentick weltv doentick onNAI extStuiN doentick e doentick ev doentick weltv weltv do开 doentick d ev extStui onNAI d evs er
+--------------------------
+
+  step=20   loss=3.967 lr=4.27e-04 tok/s=5578 elapsed=5.8s
+  step=40   loss=2.758 lr=4.28e-04 tok/s=5805 elapsed=11.1s
+  step=60   loss=2.641 lr=4.28e-04 tok/s=5889 elapsed=16.6s
+  step=80   loss=2.655 lr=4.29e-04 tok/s=5752 elapsed=22.6s
+  step=100  loss=3.512 lr=4.30e-04 tok/s=5774 elapsed=28.1s
+  step=120  loss=3.778 lr=4.30e-04 tok/s=5786 elapsed=33.6s
+  step=140  loss=2.819 lr=4.31e-04 tok/s=5795 elapsed=39.3s
+  step=160  loss=3.114 lr=4.31e-04 tok/s=5768 elapsed=45.0s
+[epoch 70] steps=161 avg_loss=3.108 elapsed=45.2s tok/s=5768
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.819 lr=4.41e-04 tok/s=5534 elapsed=5.8s
+  step=40   loss=3.520 lr=4.41e-04 tok/s=5643 elapsed=11.3s
+  step=60   loss=2.535 lr=4.42e-04 tok/s=5512 elapsed=17.4s
+  step=80   loss=3.225 lr=4.42e-04 tok/s=5623 elapsed=23.2s
+  step=100  loss=4.157 lr=4.43e-04 tok/s=5650 elapsed=28.7s
+  step=120  loss=3.080 lr=4.43e-04 tok/s=5644 elapsed=34.3s
+  step=140  loss=4.045 lr=4.44e-04 tok/s=5656 elapsed=39.8s
+[epoch 71] steps=159 avg_loss=3.264 elapsed=45.3s tok/s=5659
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=3.317 lr=4.53e-04 tok/s=5828 elapsed=5.8s
+  step=40   loss=2.188 lr=4.53e-04 tok/s=5860 elapsed=11.6s
+  step=60   loss=2.757 lr=4.54e-04 tok/s=5777 elapsed=17.3s
+  step=80   loss=3.535 lr=4.54e-04 tok/s=5674 elapsed=23.3s
+  step=100  loss=2.943 lr=4.55e-04 tok/s=5781 elapsed=28.8s
+  step=120  loss=2.765 lr=4.55e-04 tok/s=5849 elapsed=34.4s
+  step=140  loss=2.489 lr=4.55e-04 tok/s=5823 elapsed=40.1s
+[epoch 72] steps=159 avg_loss=3.203 elapsed=45.2s tok/s=5849
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=2.933 lr=4.64e-04 tok/s=5514 elapsed=5.8s
+  step=40   loss=3.887 lr=4.64e-04 tok/s=5660 elapsed=11.4s
+  step=60   loss=4.058 lr=4.64e-04 tok/s=5680 elapsed=17.1s
+  step=80   loss=3.413 lr=4.65e-04 tok/s=5655 elapsed=22.9s
+  step=100  loss=3.893 lr=4.65e-04 tok/s=5665 elapsed=28.7s
+  step=120  loss=2.683 lr=4.66e-04 tok/s=5661 elapsed=34.4s
+  step=140  loss=4.465 lr=4.66e-04 tok/s=5683 elapsed=40.0s
+[epoch 73] steps=158 avg_loss=3.175 elapsed=45.0s tok/s=5689
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=4.171 lr=4.73e-04 tok/s=6015 elapsed=5.6s
+  step=40   loss=3.120 lr=4.73e-04 tok/s=5920 elapsed=11.3s
+  step=60   loss=1.792 lr=4.74e-04 tok/s=5793 elapsed=17.0s
+  step=80   loss=2.700 lr=4.74e-04 tok/s=5751 elapsed=22.7s
+  step=100  loss=3.273 lr=4.74e-04 tok/s=5777 elapsed=28.3s
+  step=120  loss=4.037 lr=4.75e-04 tok/s=5808 elapsed=33.9s
+  step=140  loss=3.245 lr=4.75e-04 tok/s=5782 elapsed=39.6s
+  step=160  loss=4.050 lr=4.76e-04 tok/s=5800 elapsed=45.0s
+[epoch 74] steps=161 avg_loss=3.108 elapsed=45.2s tok/s=5799
+[save] checkpoint -> /workspace/nextai/model_last.pt
+
+--- Conversation test ---
+  [en] Q: What is your name?
+         A:   ameisNAI ext,Fa elo ameisN ext,devpedb yNAIisNAI extStui.Myn dotmodeldevpedb dooent doent doent doentick doentick.Myn ext,ent doentick doentick.Myn ame
+  [zh] Q: 你叫什么名字？
+         A: � extStui 发�由N do开的 extStui 发�慿��三���的AI是N 发�由N 发�由N 发�由N 发�于�����AI�慱���N 发�一�叞��������我�NAI�总��我
+  [de] Q: Wie heißt du?
+         A:   ev wh我 onN ext,entick in onNAI extStui.MeinN doentick doentick extStui.MeinNAI doentick doentick doentick ext.MeinNAI  doentick   ameistNAI ext,entick    
+  [en] Q: Give three tips for staying healthy.
+         A: allm         edism ar form   omepersal    eloentisthe s ewasleadt     eoftheh     igh.It     ealth  est  eu    rct  irc  icherpend t  
+  [zh] Q: 什么是原子？
+         A: ext��好�由N extStui extStui do开的AI��这诨�诨��中��诨�诨��对�����大�������为的�譼这诨���囪叞��������的�是丰����中��诨�诨�诨�诨�
+  [de] Q: Was ist künstliche Intelligenz?
+         A:  ,ein onN ev doentick weltv weltv erachesN onN chdoentick ev eNAI ev weltv onN chd onN chdoentick.Es atv ev roz  ond t e ud 
+--------------------------
+
+  step=20   loss=3.121 lr=4.81e-04 tok/s=5902 elapsed=5.4s
+  step=40   loss=2.721 lr=4.82e-04 tok/s=5839 elapsed=11.2s
+  step=60   loss=1.934 lr=4.82e-04 tok/s=5753 elapsed=17.0s
+  step=80   loss=3.995 lr=4.82e-04 tok/s=5798 elapsed=22.5s
+  step=100  loss=3.016 lr=4.82e-04 tok/s=5833 elapsed=27.8s
+  step=120  loss=2.834 lr=4.83e-04 tok/s=5798 elapsed=33.5s
+  step=140  loss=2.313 lr=4.83e-04 tok/s=5819 elapsed=39.1s
+  step=160  loss=3.558 lr=4.83e-04 tok/s=5814 elapsed=44.7s
+[epoch 75] steps=161 avg_loss=3.096 elapsed=45.0s tok/s=5816
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=2.685 lr=4.88e-04 tok/s=6008 elapsed=5.4s
+  step=40   loss=1.552 lr=4.88e-04 tok/s=5693 elapsed=11.2s
+  step=60   loss=3.405 lr=4.88e-04 tok/s=5629 elapsed=17.1s
+  step=80   loss=2.160 lr=4.89e-04 tok/s=5699 elapsed=22.6s
+  step=100  loss=4.406 lr=4.89e-04 tok/s=5734 elapsed=28.1s
+  step=120  loss=2.666 lr=4.89e-04 tok/s=5758 elapsed=33.8s
+  step=140  loss=2.983 lr=4.89e-04 tok/s=5778 elapsed=39.2s
+  step=160  loss=3.339 lr=4.90e-04 tok/s=5772 elapsed=44.8s
+[epoch 76] steps=161 avg_loss=3.083 elapsed=45.1s tok/s=5771
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=2.877 lr=4.93e-04 tok/s=6000 elapsed=5.6s
+  step=40   loss=2.453 lr=4.93e-04 tok/s=5858 elapsed=11.3s
+  step=60   loss=3.776 lr=4.94e-04 tok/s=5838 elapsed=17.0s
+  step=80   loss=3.490 lr=4.94e-04 tok/s=5874 elapsed=22.6s
+  step=100  loss=2.912 lr=4.94e-04 tok/s=5905 elapsed=28.1s
+  step=120  loss=3.643 lr=4.94e-04 tok/s=5851 elapsed=33.7s
+  step=140  loss=1.165 lr=4.94e-04 tok/s=5889 elapsed=39.3s
+  step=160  loss=3.566 lr=4.94e-04 tok/s=5884 elapsed=44.9s
+[epoch 77] steps=161 avg_loss=3.156 elapsed=45.2s tok/s=5878
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=4.500 lr=4.97e-04 tok/s=5792 elapsed=5.5s
+  step=40   loss=2.935 lr=4.97e-04 tok/s=5857 elapsed=11.1s
+  step=60   loss=2.554 lr=4.97e-04 tok/s=5820 elapsed=16.9s
+  step=80   loss=3.296 lr=4.97e-04 tok/s=5832 elapsed=22.4s
+  step=100  loss=2.602 lr=4.98e-04 tok/s=5842 elapsed=28.1s
+  step=120  loss=3.077 lr=4.98e-04 tok/s=5878 elapsed=33.6s
+  step=140  loss=2.089 lr=4.98e-04 tok/s=5853 elapsed=39.2s
+  step=160  loss=3.334 lr=4.98e-04 tok/s=5857 elapsed=44.7s
+[epoch 78] steps=162 avg_loss=3.095 elapsed=45.2s tok/s=5868
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=20   loss=4.305 lr=4.99e-04 tok/s=5777 elapsed=5.5s
+  step=40   loss=2.771 lr=4.99e-04 tok/s=5838 elapsed=11.1s
+  step=60   loss=3.280 lr=4.99e-04 tok/s=5769 elapsed=17.0s
+  step=80   loss=3.330 lr=4.99e-04 tok/s=5864 elapsed=22.6s
+  step=100  loss=3.677 lr=5.00e-04 tok/s=5844 elapsed=28.2s
+  step=120  loss=3.164 lr=5.00e-04 tok/s=5824 elapsed=33.9s
+  step=140  loss=3.479 lr=5.00e-04 tok/s=5777 elapsed=39.5s
+  step=160  loss=4.151 lr=5.00e-04 tok/s=5784 elapsed=45.0s
+[epoch 79] steps=160 avg_loss=3.122 elapsed=45.0s tok/s=5784
+[save] checkpoint -> /workspace/nextai/model_last.pt
+
+--- Conversation test ---
+  [en] Q: What is your name?
+         A:   ameisNAI是NAI u elo   yNAI  ameisasprige   ameisNAI   ameisa extStui.Myn ameisN ameisN   ameisa  ameisN    extStui.Myn extStui.Myn     extStu
+  [zh] Q: 你叫什么名字？
+         A: ��个 ext� 发 extStui do开的丰����他一由N 发�由N 发���中���对�������的丰����他是N 发�一��如一�叞��人一�叞��一由N  由N ext�他�
+  [de] Q: Wie heißt du?
+         A:   eeinK-istesChtell extStui.MeinNAI weltv weltv ameis ext,entick onN extStui.MeinN extStui.MeinNAI    onN extStui eN    r      extStui.MeinN      ame
+  [en] Q: Give three tips for staying healthy.
+         A: .Theproess   ourb      or   ern u     o    dou    u aeat     trtpoanucti     t  l ealth      om   e      dte
+  [zh] Q: 什么是原子？
+         A: ext�个 ext一由N extStuio开的丰������你���果�对��了丰��
+�的 发�一��是N 发�这诨���是N    ext�他����三���诨�诨�诨��我��的�
+  [de] Q: Was ist künstliche Intelligenz?
+         A:  IAssentick ,entick doentick weltv weltv ameis IbinNAI onN extStui.MeinN do开�中��1 do开�
+
+.Jfier    our  onJ on
+.DtRi1     e  e 
+--------------------------
+
+[done] training finished.
