@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+*.log
+*.pt
+.nextai_cache/
+.DS_Store
