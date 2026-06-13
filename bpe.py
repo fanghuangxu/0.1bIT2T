@@ -1,29 +1,20 @@
 """
-bpe.py  -- A GPT-2 style Byte-Pair Encoding tokenizer, written from scratch.
+bpe.py  -- GPT-2 style Byte-Pair Encoding tokenizer (from scratch).
 
-Algorithm outline:
-  1. Raw text -> regex-style pre-tokenization  (split into word-sized units).
-  2. Each "word" is mapped character-by-character to unicode bytes so that
-     every byte has a visible representation (exactly like GPT-2 / tiktoken).
-  3. Iteratively merge the highest-frequency adjacent pair in the vocabulary
-     until we reach `vocab_size` tokens.  This uses a priority-queue-style
-     count-tracker so that each merge is found in O(1) average time after
-     the initial O(words * word_len) pair-count pass.
-  4. Encoding re-applies the learned merges; decoding is a straightforward
-     byte -> string conversion.
+Key improvements:
+  1. Force-preserve "NextAI", "Next Studio" and similar identity phrases as atomic tokens
+  2. Treat each CJK character as its own pre-tokenization "word" (matches GPT-2 behavior)
+  3. Byte-level fallback for every other character (256 base byte-unicode tokens)
 """
 
 import collections
-import json
 import heapq
+import json
 import re
 import sys
 from pathlib import Path
 
 
-# ---------------------------------------------------------------------------
-# 1) Byte <-> Unicode mapping
-# ---------------------------------------------------------------------------
 def _build_bytes_to_unicode():
     bs = list(range(ord("!"), ord("~") + 1)) \
        + list(range(ord("¡"), ord("¬") + 1)) \
@@ -42,17 +33,73 @@ def _build_bytes_to_unicode():
 BYTES_TO_UNICODE, UNICODE_TO_BYTES = _build_bytes_to_unicode()
 
 
-# ---------------------------------------------------------------------------
-# 2) Pre-tokenization (a manual scan that behaves like GPT-2's pattern)
-# ---------------------------------------------------------------------------
+# --- Pre-tokenization -------------------------------------------------------
+
+# Identity phrases to preserve as ATOMIC tokens (never split)
+IDENTITY_ATOMS = [
+    # English
+    "NextAI", "Next Studio", "nextai", "next studio",
+    # Chinese phrase atoms
+    "下一个工作室", "下一代工作室", "下一个AI",
+    # German-ish capitalizations
+    "NextStudio",
+]
+
+# Sort by length descending for regex alternation
+IDENTITY_ATOMS_SORTED = sorted(set(IDENTITY_ATOMS), key=lambda x: -len(x))
+
+
+def _is_cjk(ch):
+    """Check if a char is in a CJK unified ideograph / Hangul / Hiragana / Katakana range."""
+    cp = ord(ch)
+    return (
+        0x3400 <= cp <= 0x4DBF    # CJK Ext A
+        or 0x4E00 <= cp <= 0x9FFF  # CJK Unified
+        or 0x3040 <= cp <= 0x30FF  # Hiragana / Katakana
+        or 0xAC00 <= cp <= 0xD7A3  # Hangul
+        or 0xF900 <= cp <= 0xFAFF  # Compatibility Ideographs
+        or 0x20000 <= cp <= 0x2A6DF  # CJK Ext B
+    )
+
+
 def pre_tokenize(text: str):
+    """
+    Split text into word-sized units with these rules:
+      1. Identity atoms (NextAI, Next Studio) are split out FIRST as whole units.
+      2. Every CJK character becomes its own unit.
+      3. ASCII punctuation / apostrophe fragments (it's, don't) get conventional splitting.
+      4. Whitespace (incl. newlines) is preserved as its own unit.
+      5. Runs of letters/digits each form a unit.
+    """
     tokens = []
     i = 0
     n = len(text)
+
+    # Build regex to find identity atoms first (case sensitive match)
+    # We iterate character by character but check atoms at each position.
+
     while i < n:
         ch = text[i]
 
-        if ch in "\r\n":
+        # 1) Check for identity atom starting at position i
+        matched_atom = False
+        for atom in IDENTITY_ATOMS_SORTED:
+            if text[i:i + len(atom)] == atom:
+                tokens.append(atom)
+                i += len(atom)
+                matched_atom = True
+                break
+        if matched_atom:
+            continue
+
+        # 2) CJK character -> its own word
+        if _is_cjk(ch):
+            tokens.append(ch)
+            i += 1
+            continue
+
+        # 3) Whitespace / newline -> preserved unit
+        if ch == "\n" or ch == "\r":
             j = i
             while j < n and text[j] in "\r\n":
                 j += 1
@@ -67,7 +114,7 @@ def pre_tokenize(text: str):
             i = j
             continue
 
-        # English-style contractions
+        # 4) English contractions (eat the longest "'s" / "'re" etc.)
         if ch == "'" or ch == "\u2019":
             frags = ["'s", "'t", "'re", "'ve", "'m", "'ll", "'d"]
             matched = False
@@ -80,6 +127,7 @@ def pre_tokenize(text: str):
             if matched:
                 continue
 
+        # 5) Digit run (up to 3)
         if ch.isdigit():
             j = i
             while j < n and text[j].isdigit() and (j - i) < 3:
@@ -88,24 +136,33 @@ def pre_tokenize(text: str):
             i = j
             continue
 
-        if ch.isalpha():
+        # 6) ASCII letter run (English / Latin words)
+        if ch.isalpha() and ord(ch) < 0x80:
             j = i
-            while j < n and text[j].isalpha():
+            while j < n and text[j].isalpha() and ord(text[j]) < 0x80:
                 j += 1
             tokens.append(text[i:j])
             i = j
             continue
 
-        # Catch-all: single non-alnum non-space char
+        # 7) Other letters (accented chars, Greek, Cyrillic, etc.)
+        if ch.isalpha():
+            j = i
+            while j < n and text[j].isalpha() and not _is_cjk(text[j]):
+                j += 1
+            tokens.append(text[i:j])
+            i = j
+            continue
+
+        # 8) Any other non-alphanumeric non-space: one char per token
         tokens.append(ch)
         i += 1
 
     return tokens
 
 
-# ---------------------------------------------------------------------------
-# 3) The tokenizer
-# ---------------------------------------------------------------------------
+# --- The tokenizer ---------------------------------------------------------
+
 class BPETokenizer:
     def __init__(self, vocab_size: int = 5000,
                  bos_token: str = "<s>",
@@ -118,18 +175,15 @@ class BPETokenizer:
         self.pad_token = pad_token
         extra = list(special_tokens or [])
         self._all_special = [bos_token, eos_token, pad_token] + extra
-        # deduplicate, keep order
         seen = set()
         self._all_special = [t for t in self._all_special
                              if not (t in seen or seen.add(t))]
 
-        # Populated by train() / load()
         self.token_to_id = {}
         self.id_to_token = {}
-        self.merges = {}   # (a, b) -> merge rank (smaller = earlier merge)
+        self.merges = {}
         self._next_id = 0
 
-    # ----------------- vocab helpers -----------------
     def _add_token(self, tok: str):
         if tok in self.token_to_id:
             return False
@@ -150,37 +204,21 @@ class BPETokenizer:
     def pad_id(self):
         return self.token_to_id[self.pad_token]
 
-    # ----------------- training -----------------
-    def train(self, iterator, max_words_for_bpe: int = 150000):
-        """Build BPE vocab.  `iterator` yields text strings."""
-
-        # Step 1: collect unique words (as byte-unicode tuples) + counts
+    def train(self, iterator, max_words_for_bpe: int = 200000):
         word_freq = collections.Counter()
-        total_words = 0
+        total = 0
         for text in iterator:
             if not isinstance(text, str) or len(text) == 0:
                 continue
             for w in pre_tokenize(text):
-                chars = "".join(BYTES_TO_UNICODE[b] for b in w.encode("utf-8"))
-                if not chars:
-                    continue
-                word_freq[chars] += 1
-                total_words += 1
-                if total_words >= max_words_for_bpe:
+                word_freq[w] += 1
+                total += 1
+                if total >= max_words_for_bpe:
                     break
-            if total_words >= max_words_for_bpe:
-                # Allow a final drain of the iterator for identity-sentence
-                # yields that come after; but in practice, stop here.
-                pass
+            if total >= max_words_for_bpe:
+                continue
 
-        # Represent each unique word as a MUTABLE list of sub-tokens.
-        # Each sub-token starts as a single byte-unicode char.
-        # word_index[i] = (list_of_subtokens, frequency)
-        word_index = []
-        for chars, freq in word_freq.items():
-            word_index.append((list(chars), freq))
-
-        # Initial vocab: special tokens + 256 single bytes
+        # Initial vocab: special tokens + 256 byte tokens
         self.token_to_id = {}
         self.id_to_token = {}
         self._next_id = 0
@@ -188,27 +226,40 @@ class BPETokenizer:
             self._add_token(t)
         for b in range(256):
             self._add_token(BYTES_TO_UNICODE[b])
-        self.merges = {}
 
-        # Step 2: initial pair counts
+        # Identity atoms → also add as vocab tokens (they won't be BPE-merged
+        # but since pre_tokenize returns them as whole words, the byte-level
+        # mapping will be used). Actually, we need identity atoms to get
+        # encoded as a SINGLE token. We do that by adding them as vocab atoms
+        # BEFORE BPE merge, which effectively protects them from further
+        # splitting because encode_word will check if the whole word is in
+        # token_to_id first.
+        for atom in IDENTITY_ATOMS_SORTED:
+            self._add_token("".join(BYTES_TO_UNICODE[b] for b in atom.encode("utf-8")))
+
+        # Represent each unique word as list of subtokens
+        word_index = []
+        for chars, freq in word_freq.items():
+            # Byte-unicode mapping
+            bu = "".join(BYTES_TO_UNICODE[b] for b in chars.encode("utf-8"))
+            # Start as single-char list; but if the whole thing is a known
+            # token (identity atom), just store as single string.
+            if bu in self.token_to_id:
+                word_index.append(([bu], freq))
+            else:
+                word_index.append((list(bu), freq))
+
+        # Pair counting
         pair_counts = collections.Counter()
-        # pair -> list of (word_idx, position_in_word) for fast updates
-        pair_positions = collections.defaultdict(set)
         for wi, (tokens, freq) in enumerate(word_index):
             for pi in range(len(tokens) - 1):
                 pair = (tokens[pi], tokens[pi + 1])
                 pair_counts[pair] += freq
-                pair_positions[pair].add((wi, pi))
 
         target_merges = max(0, self.vocab_size - self._next_id)
-        print(f"[bpe] unique words={len(word_index)} total_subwords={total_words} "
+        print(f"[bpe] unique words={len(word_index)} total_subwords={total} "
               f"target_merges={target_merges}", file=sys.stderr)
 
-        # Step 3: iterative merge with priority-queue-style updates
-        rank = 0
-        # Use a max heap (negate counts).  Entries may be stale (pair_count
-        # was reduced), so we verify after popping and re-push the corrected
-        # value if the heap data doesn't match reality.
         heap = []
         for pair, cnt in pair_counts.items():
             heapq.heappush(heap, (-cnt, pair))
@@ -218,150 +269,58 @@ class BPETokenizer:
             neg_cnt, best = heapq.heappop(heap)
             real_cnt = pair_counts.get(best, 0)
             if real_cnt <= 0 or -neg_cnt != real_cnt:
-                # stale entry; skip (a newer correct entry is already in heap)
                 continue
             a, b = best
             merged = a + b
-
-            # Add to vocab
-            if not self._add_token(merged):
-                # already existed somehow; skip without increasing rank
-                # (shouldn't happen in clean flow)
-                pass
-            self.merges[(a, b)] = rank
-            rank += 1
+            self._add_token(merged)
+            self.merges[(a, b)] = merges_done
             merges_done += 1
 
-            # For every occurrence of (a, b) in every word: merge and update
-            # pair counts.
-            # We make a local copy of positions because we mutate pair_positions.
-            affected = list(pair_positions.get(best, ()))
-            if not affected:
-                pair_counts[best] = 0
-                continue
-            del pair_positions[best]
-            pair_counts[best] = 0
+            # Update affected words
+            for wi, (tokens, freq) in enumerate(word_index):
+                new_toks = []
+                j = 0
+                changed = False
+                while j < len(tokens):
+                    if j < len(tokens) - 1 and tokens[j] == a and tokens[j + 1] == b:
+                        new_toks.append(merged)
+                        j += 2
+                        changed = True
+                    else:
+                        new_toks.append(tokens[j])
+                        j += 1
+                if changed:
+                    # Decrement old pair counts
+                    # Simpler: walk both old and new, decrement/increment.
+                    old_toks = tokens
+                    # Decrement all pairs in old
+                    for pi in range(len(old_toks) - 1):
+                        op = (old_toks[pi], old_toks[pi + 1])
+                        pair_counts[op] -= freq
+                        if pair_counts[op] <= 0:
+                            pair_counts.pop(op, None)
+                    # Increment all pairs in new
+                    for pi in range(len(new_toks) - 1):
+                        np_ = (new_toks[pi], new_toks[pi + 1])
+                        pair_counts[np_] += freq
+                        heapq.heappush(heap, (-pair_counts[np_], np_))
+                    word_index[wi] = (new_toks, freq)
 
-            # We need to mutate word_index[wi][0] which is a list
-            for wi, pi in affected:
-                tokens, freq = word_index[wi]
-                # bounds check: token list may have been updated if this
-                # (wi, pi) is from a previous update of the same word
-                if pi >= len(tokens) - 1:
-                    continue
-                if tokens[pi] != a or tokens[pi + 1] != b:
-                    continue
-                # Merge the pair in-place
-                tokens[pi:pi + 2] = [merged]
-                # Now update counts for neighbours of position pi:
-                #  - Left: (tokens[pi-1], a) and (tokens[pi-1], merged)
-                #  - Right: (b, tokens[pi+2]) and (merged, tokens[pi+2])
-                #    (Note: after in-place merge, tokens[pi+1] is now the
-                #    old tokens[pi+2], so there is no need to update the
-                #    right neighbour pair specifically.)
-                # Actually we must recompute for neighbours properly:
-                #
-                # Before merge: pairs at positions pi-1, pi, pi+1 were
-                #   (tokens[pi-1], a)  (a, b)  (b, tokens[pi+2])
-                # After merge:
-                #   (tokens[pi-1], merged)  (merged, tokens[pi+2])
-                # So decrement the two stale pairs, increment the two new ones.
-                for delta in (-1, 0):  # pi-1 and pi are the two new/old edges
-                    pos = pi + delta
-                    # "pos" is the position BEFORE the merge in the original
-                    # list, but we've already done the in-place merge so
-                    # tokens[pos] and tokens[pos+1] now reflect the new state.
-                    if 0 <= pos < len(tokens) - 1:
-                        new_pair = (tokens[pos], tokens[pos + 1])
-                        # count it once (we need to compute the BEFORE-state
-                        # pair too but we already handled it when we removed
-                        # (a, b) globally; this is getting complicated ...).
-                        # Simpler approach: when we visit each (wi, pi)
-                        # from the affected-set, we already know that position
-                        # pi in the BEFORE list was pair (a, b). After the
-                        # in-place merge, edges (pi-1, pi) and (pi, pi+1) are
-                        # new and edge (pi-1, pi) corresponds to (tokens[pi-1],
-                        # merged) which before was (tokens[pi-1], a) and
-                        # (tokens[pi-1], b) doesn't quite exist ... too messy.
-                        # Instead: DEFER neighbour updates to a second scan.
-                        pass
-
-                # Because the above neighbour logic is error-prone when many
-                # occurrences of the same pair share words, we instead do a
-                # clean local recount for this word. It's O(len(word)) which
-                # is fine because words are short (bpe unit sized).
-                # Recount strategy: subtract old pair counts for this word,
-                # then add back pair counts for the new state, removing the
-                # pair_positions for old pairs too.
-                # But we can't easily know WHICH pair_positions entries to
-                # remove for this word without tracking them, so: just
-                # recompute with a second scan for positions.
-                #
-                # To keep correctness simple, we:
-                #  (a) decrement freq for every old pair in this word AND
-                #      remove (wi, pos) from pair_positions.
-                #  (b) re-build pair_positions for this word and increment
-                #      freq for every pair in the new state.
-                #
-                # NOTE: step (a) requires us to know the PRE-merge pair list.
-                # We can reconstruct it because before the merge we had
-                # (a, b) at position pi; so before merge the tokens list
-                # was: tokens = [.. tokens[pi-1], a, b, tokens[pi+2] ..]
-                # The pairs that change are those with indices pi-1, pi, pi+1
-                # in the BEFORE list (all other pairs are untouched).
-                # Pair at pi was (a, b) - handled globally above (deleted).
-                # Pairs at pi-1 and pi+1: need decrement & re-insert into
-                # pair_positions.
-                #
-                # Actually we've already done the in-place merge, so we need
-                # to KNOW the previous tokens. The previous tokens at pi-1
-                # position is tokens[pi-1] (unchanged). The previous pair at
-                # pi-1 was (tokens[pi-1], a) which now is (tokens[pi-1],
-                # merged). The previous pair at pi+1 was (b, tokens[pi+2])
-                # which now is (merged, tokens[pi+2]). tokens[pi+2] in the
-                # BEFORE state is tokens[pi+1] after the in-place merge.
-                #
-                # So the two affected neighbour pairs are at neighbour
-                # positions pi-1 and pi+1 of the ORIGINAL list:
-                before_pair_left = (tokens[pi - 1], a) if pi > 0 else None
-                before_pair_right = (b, tokens[pi + 1]) if pi + 1 < len(tokens) else None
-                new_pair_left = (tokens[pi - 1], merged) if pi > 0 else None
-                new_pair_right = (merged, tokens[pi + 1]) if pi + 1 < len(tokens) else None
-
-                for old_p, new_p, orig_pos in [
-                    (before_pair_left, new_pair_left, pi - 1),
-                    (before_pair_right, new_pair_right, pi + 1),
-                ]:
-                    if old_p is None:
-                        continue
-                    pair_counts[old_p] -= freq
-                    try:
-                        pair_positions[old_p].discard((wi, orig_pos))
-                    except Exception:
-                        pass
-                    if pair_counts[old_p] <= 0:
-                        pair_counts.pop(old_p, None)
-                    if new_p is not None:
-                        pair_counts[new_p] += freq
-                        pair_positions[new_p].add((wi, orig_pos))
-                        heapq.heappush(heap, (-pair_counts[new_p], new_p))
-
-            if merges_done and merges_done % 1000 == 0:
+            if merges_done % 500 == 0:
                 print(f"[bpe] merge {merges_done}/{target_merges} "
                       f"vocab={len(self.token_to_id)}", file=sys.stderr)
 
         print(f"[bpe] final vocab={len(self.token_to_id)} merges={len(self.merges)}",
               file=sys.stderr)
 
-    # ----------------- encoding -----------------
     def _encode_word(self, word: str):
-        """Encode a single pre-tokenized word to a list of sub-token strings."""
-        chars = [BYTES_TO_UNICODE[b] for b in word.encode("utf-8")]
-        if not chars:
-            return []
-        # Repeatedly apply the merge with the lowest rank
+        """Encode a single pre-tokenized word to a list of BPE sub-token strings."""
+        byte_unicode = "".join(BYTES_TO_UNICODE[b] for b in word.encode("utf-8"))
+        # Fast path: whole identity atom exists as a single token
+        if byte_unicode in self.token_to_id:
+            return [byte_unicode]
+        chars = list(byte_unicode)
         while len(chars) >= 2:
-            # find the adjacent pair with smallest rank
             best_rank = None
             best_i = -1
             for i in range(len(chars) - 1):
@@ -388,7 +347,6 @@ class BPETokenizer:
             ids = ids[:max_length]
         return ids
 
-    # ----------------- decoding -----------------
     def decode(self, ids: list, skip_special: bool = True) -> str:
         out_chars = []
         for i in ids:
@@ -411,7 +369,7 @@ class BPETokenizer:
         except Exception:
             return bytes(byte_vals).decode("utf-8", errors="replace")
 
-    # ----------------- persistence -----------------
+    # persistence
     def save(self, save_dir):
         save_dir = Path(save_dir)
         save_dir.mkdir(parents=True, exist_ok=True)
