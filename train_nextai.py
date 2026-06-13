@@ -51,6 +51,7 @@ N_INNER = 4 * N_EMBD  # 512
 BATCH_SIZE = 6
 LEARNING_RATE = 3e-4
 WARMUP_STEPS = 200
+TOTAL_STEPS = 150000  # enough for 200 epochs
 EPOCH_SECONDS = 45
 
 BOS_TOKEN = "<s>"
@@ -299,7 +300,7 @@ def build_model(vocab_size: int, pad_id: int, bos_id: int, eos_id: int):
 # ---------------------------------------------------------------------------
 # Training
 # ---------------------------------------------------------------------------
-def cosine_lr(step: int, total_steps: int = 20000):
+def cosine_lr(step: int, total_steps: int = TOTAL_STEPS):
     if step < WARMUP_STEPS:
         return LEARNING_RATE * (step + 1) / WARMUP_STEPS
     progress = (step - WARMUP_STEPS) / max(total_steps - WARMUP_STEPS, 1)
@@ -332,7 +333,7 @@ def train_epoch(model, optimizer, loader, epoch_idx, device, seconds=EPOCH_SECON
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        lr = cosine_lr(epoch_idx * 500 + n_steps)
+        lr = cosine_lr(epoch_idx * 500 + n_steps, TOTAL_STEPS)
         for pg in optimizer.param_groups:
             pg["lr"] = lr
         optimizer.step()
@@ -474,7 +475,7 @@ def main():
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=0.01)
 
     print("\n=== Training starts ===")
-    MAX_EPOCHS = 120
+    MAX_EPOCHS = 200
     for epoch in range(start_epoch, MAX_EPOCHS):
         train_epoch(model, optimizer, loader, epoch_idx=epoch, device=device)
         torch.save({

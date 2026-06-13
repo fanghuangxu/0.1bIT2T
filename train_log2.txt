@@ -1,0 +1,131 @@
+[device] cpu
+[tokenizer] reusing cached tokenizer.
+[tokenizer] vocab_size=5000, bos=0 eos=1 pad=2
+  len=19  orig=Hello, world! This is NextAI by Next Studio.
+                    back=<s>Hello, world! This is NextAI by Next Studio.</s>
+  len=31  orig=你好，世界！这是 NextAI，由 Next Studio 开发。
+                    back=<s>你好，世界！这是 NextAI，由 Next Studio 开发。</s>
+  len=27  orig=Hallo Welt! Das ist NextAI, entwickelt von Next Studio.
+                    back=<s>Hallo Welt! Das ist NextAI, entwickelt von Next Studio.</s>
+[model] loading existing checkpoint ...
+[model] 1,664,384 trainable parameters
+[model] resumed from epoch 69
+
+=== Training starts ===
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[transformers] `loss_type=None` was set in the config but it is unrecognized. Using the default loss: `ForCausalLMLoss`.
+[epoch 69] steps=1 avg_loss=4.052 elapsed=96.3s tok/s=12
+[save] checkpoint -> /workspace/nextai/model_last.pt
+
+--- conversation test ---
+  [en] Q: What is your name?
+         A:                                        .IwasmadebyNext Studio
+
+  [en] Q: Who are you?
+         A:            f�  .IwasdevelopedbyNext Studio
+
+  [en] Q: Who made you?
+         A:                         .IwasmadebyNext Studio
+
+  [zh] Q: 你叫什么名字？
+         A:  � �
+
+  [zh] Q: 谁开发的你？
+         A: 由Next Studio�� ���由Next Studio��� ���2 ���
+
+  [de] Q: Wie heißt du?
+         A:      IamNext Studio
+
+  [de] Q: Wer hat dich entwickelt?
+         A:      wdev       inNext Studio
+
+  [en] Q: Give three tips for staying healthy.
+         A:                                                         .Itisthere,S                           
+
+  [zh] Q: 请告诉我保持健康的三个建议。
+         A: �� ��由Next Studio����
+
+  [en] Q: Hi, how are you?
+         A:                                                                                  st        
+
+-------------------------
+
+  step=30   loss=4.270 lr=2.62e-04 tok/s=1386 elapsed=24.5s
+  step=60   loss=4.619 lr=2.62e-04 tok/s=1920 elapsed=36.5s
+[epoch 70] steps=82 avg_loss=4.225 elapsed=45.4s tok/s=2134
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=30   loss=3.903 lr=2.61e-04 tok/s=2988 elapsed=11.9s
+  step=60   loss=4.119 lr=2.61e-04 tok/s=2985 elapsed=23.8s
+  step=90   loss=4.208 lr=2.61e-04 tok/s=2982 elapsed=35.7s
+[epoch 71] steps=114 avg_loss=4.218 elapsed=45.3s tok/s=2977
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=30   loss=4.375 lr=2.60e-04 tok/s=3040 elapsed=11.9s
+  step=60   loss=4.224 lr=2.60e-04 tok/s=3024 elapsed=24.0s
+  step=90   loss=3.837 lr=2.59e-04 tok/s=2973 elapsed=35.8s
+[epoch 72] steps=113 avg_loss=4.205 elapsed=45.0s tok/s=2963
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=30   loss=4.237 lr=2.59e-04 tok/s=2929 elapsed=11.8s
+  step=60   loss=3.956 lr=2.58e-04 tok/s=2973 elapsed=23.9s
+  step=90   loss=4.253 lr=2.58e-04 tok/s=2988 elapsed=35.7s
+[epoch 73] steps=114 avg_loss=4.201 elapsed=45.3s tok/s=2985
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=30   loss=4.140 lr=2.57e-04 tok/s=2963 elapsed=12.4s
+  step=60   loss=4.136 lr=2.57e-04 tok/s=2950 elapsed=24.4s
+  step=90   loss=4.304 lr=2.57e-04 tok/s=2936 elapsed=36.3s
+[epoch 74] steps=112 avg_loss=4.167 elapsed=45.1s tok/s=2948
+[save] checkpoint -> /workspace/nextai/model_last.pt
+
+--- conversation test ---
+  [en] Q: What is your name?
+         A:                           ,IamNextAI     .IbyNext Studio
+
+  [en] Q: Who are you?
+         A:       ,amultiual                   ,IwasdevelopedbyNext Studio
+
+  [en] Q: Who made you?
+         A:                  .IamNextAI   ,Next Studio
+
+  [zh] Q: 你叫什么名字？
+         A: �   �  �   � � � � � �   � �  � � �    �  �      � �    �  �  �     �
+
+  [zh] Q: 谁开发的你？
+         A: 由Next Studio�� �NextAI�NextAI�由Next Studio�� ��� ���
+
+  [de] Q: Wie heißt du?
+         A:  wel wel   wdev  wel wel  wdev  wel   .Ichwel onNext Studio
+
+  [de] Q: Wer hat dich entwickelt?
+         A:                onNext Studio
+
+  [en] Q: Give three tips for staying healthy.
+         A:             ,as                      ,andtheunique    ,andthesameandthetimetotheabilityandotherasmallmultiual          .Thisdevelop                
+
+  [zh] Q: 请告诉我保持健康的三个建议。
+         A: 是NextAI�我���我   ����我��  � �焑�我�� �� NextAI�我���我 ��我 �熭��
+
+  [en] Q: Hi, how are you?
+         A:                                                                            .AIassist            
+
+-------------------------
+
+  step=30   loss=4.251 lr=2.56e-04 tok/s=2767 elapsed=11.9s
+  step=60   loss=3.986 lr=2.56e-04 tok/s=2879 elapsed=23.8s
+  step=90   loss=4.505 lr=2.56e-04 tok/s=2910 elapsed=35.8s
+[epoch 75] steps=114 avg_loss=4.147 elapsed=45.4s tok/s=2910
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=30   loss=4.206 lr=2.55e-04 tok/s=2937 elapsed=12.0s
+  step=60   loss=4.242 lr=2.55e-04 tok/s=3000 elapsed=23.9s
+  step=90   loss=4.217 lr=2.55e-04 tok/s=3000 elapsed=36.0s
+[epoch 76] steps=113 avg_loss=4.167 elapsed=45.2s tok/s=2985
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=30   loss=3.980 lr=2.54e-04 tok/s=2812 elapsed=11.8s
+  step=60   loss=4.395 lr=2.54e-04 tok/s=2934 elapsed=23.7s
+  step=90   loss=4.005 lr=2.54e-04 tok/s=2940 elapsed=35.6s
+[epoch 77] steps=114 avg_loss=4.140 elapsed=45.2s tok/s=2939
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=30   loss=4.265 lr=2.53e-04 tok/s=2922 elapsed=11.7s
+  step=60   loss=3.511 lr=2.53e-04 tok/s=2937 elapsed=23.8s
+  step=90   loss=4.027 lr=2.53e-04 tok/s=2985 elapsed=35.8s
+[epoch 78] steps=114 avg_loss=4.109 elapsed=45.3s tok/s=2972
+[save] checkpoint -> /workspace/nextai/model_last.pt
+  step=30   loss=4.090 lr=2.52e-04 tok/s=2942 elapsed=12.1s
