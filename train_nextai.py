@@ -1,9 +1,9 @@
-"""NextAI: ~2M+ param multilingual (EN/DE/ZH) chat model.
+"""NextAI: 多语言(EN/DE/ZH)对话模型。
 
-Trains iteratively with <60s per round; evaluates every 5 rounds.
-Upsampled translation/QA data for better multilingual performance.
-All output is logged to train_nextai.log.
-"""
+训练参数: vocab=2048, d_model=160, n_layers=2, d_ff=256 → ~1.3M 参数。
+每轮训练时间 <2 分钟; 每 5 轮评估一次; 翻译/QA 数据做 upsample。
+所有输出记录到 train_nextai.log。
+最终保存为 nextai-full.pt 和 NextAI-rz.pt。"""
 from __future__ import annotations
 
 import json
@@ -437,34 +437,33 @@ def build_pairs() -> list[tuple[str, str]]:
 
     log(f"Before upsampling: {len(pairs)} pairs (trans: {len(TRANSLATION_PAIRS)}, qa: {len(QA_PAIRS)}, other: {len(OTHER_PAIRS)})")
 
-    # Upsample translation pairs 4x and QA pairs 3x for better multilingual performance
-    # Reduced pair count to keep BPE encoding time manageable
-    max_pairs = 6000
+    # Upsample translation pairs 3x and QA pairs 2x for better multilingual performance
+    max_pairs = 20000  # 恢复原始数据量（模型更小，每步更快，2分钟/轮足够）
     upsampled = []
-    upsampled.extend(OTHER_PAIRS[:1200])  # identity + chitchat + wikipedia (limited)
-    # Translation: 4x upsampling (more emphasis on translation)
-    trans_sample = TRANSLATION_PAIRS[:1200] * 4
+    upsampled.extend(OTHER_PAIRS[:5000])  # identity + chitchat + wikipedia
+    # Translation: 3x upsampling
+    trans_sample = TRANSLATION_PAIRS[:4000] * 3
     upsampled.extend(trans_sample)
-    # QA: 3x upsampling (more emphasis on QA)
-    qa_sample = QA_PAIRS[:800] * 3
+    # QA: 2x upsampling
+    qa_sample = QA_PAIRS[:3000] * 2
     upsampled.extend(qa_sample)
 
     # Shuffle and limit to max_pairs
     random.shuffle(upsampled)
     pairs = upsampled[:max_pairs]
 
-    log(f"After upsampling (sampled): {len(pairs)} pairs (trans~: {len(trans_sample)}, qa~: {len(qa_sample)}, other~: 1200)")
+    log(f"After upsampling (sampled): {len(pairs)} pairs (trans~: {len(trans_sample)}, qa~: {len(qa_sample)}, other~: 5000)")
     return pairs
 
 
 # ----------------------------- model ------------------------------- #
 @dataclass
 class ModelConfig:
-    vocab_size: int = 1024
-    d_model: int = 176  # 2M+ params: d_model=176, n_layers=3, d_ff=384 → 2,149,504
+    vocab_size: int = 2048  # 恢复原始词表大小
+    d_model: int = 160     # 原始成功配置
     n_heads: int = 4
-    n_layers: int = 3
-    d_ff: int = 384
+    n_layers: int = 2      # 原始2层 (之前成功版本)
+    d_ff: int = 256        # 原始FF维度
     max_len: int = 160
     dropout: float = 0.1
 
@@ -649,10 +648,10 @@ def evaluate_examples(model: NextAI, tokenizer: ByteTokenizer, examples: list[tu
 # --------------------------- main entrypoint ----------------------- #
 def main() -> None:
     log("=" * 80)
-    log("NextAI training started (2M+ parameter version)")
+    log("NextAI 训练开始 (原始成功配置: vocab=2048, d_model=160, n_layers=2, d_ff=256)")
     device = torch.device("cpu")
 
-    cfg = ModelConfig(vocab_size=1024, d_model=176, n_heads=4, n_layers=3, d_ff=384, max_len=160, dropout=0.1)
+    cfg = ModelConfig(vocab_size=2048, d_model=160, n_heads=4, n_layers=2, d_ff=256, max_len=160, dropout=0.1)
 
     # seed
     seed = 1337
@@ -670,7 +669,7 @@ def main() -> None:
         all_texts.append(a); all_texts.append(b)
     random.shuffle(all_texts)
     tok = ByteTokenizer(vocab_size=cfg.vocab_size)
-    tok.learn(all_texts[:4000], max_merges=cfg.vocab_size - 260 - 8)
+    tok.learn(all_texts[:8000], max_merges=cfg.vocab_size - 260 - 8)  # 恢复原始文本数量
     # clamp vocab size to what the model expects
     cfg.vocab_size = int(2 ** math.ceil(math.log2(max(max(tok.b2i.values()) + 8, 512))))
     # re-init with capped vocab if we overshot
@@ -716,8 +715,8 @@ def main() -> None:
     elif n_params < 1_800_000:
         log("WARNING: model under 1.8M params")
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-5)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50, eta_min=2e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=5e-4, weight_decay=1e-5)  # 降低学习率
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50, eta_min=5e-5)  # 降低最小学习率
 
     # quick smoke test
     log("Smoke test forward pass...")
@@ -745,11 +744,11 @@ def main() -> None:
         ("问: 什么是AI？", "AI是人工智能。"),
     ]
 
-    log("Starting training loop: up to 60 seconds per round, evaluate every 5 rounds.")
+    log("开始训练循环: 每轮最多 115 秒, 每 5 轮评估一次。")
     os.makedirs("/workspace/nextai_checkpoints", exist_ok=True)
 
     for r in range(1, 51):  # up to 50 rounds
-        stats = train_epoch_round(model, optimizer, loader, r, time_budget_s=55.0, device=device)
+        stats = train_epoch_round(model, optimizer, loader, r, time_budget_s=115.0, device=device)  # 2分钟/轮预算
         scheduler.step()
         log(
             f"Round {stats['round']:>3d}: steps={stats['steps']:>4d}, mean_loss={stats['mean_loss']:.4f}, "
@@ -798,16 +797,24 @@ def main() -> None:
     final_tok_path = "/workspace/nextai_checkpoints/nextai_final_tokenizer.pkl"
     with open(final_tok_path, "wb") as f:
         pickle.dump({"b2i": tok.b2i, "i2b": tok.i2b, "merges": tok.merges, "vocab_size": tok.vocab_size}, f)
-    # also save the combined .pt + tokenizer as NextAI-rz.pt (standalone)
+    # 保存完整模型为 nextai-full.pt (包含模型权重 + 配置 + 分词器)
+    full_path = "/workspace/nextai-full.pt"
+    torch.save({
+        "model": model.state_dict(),
+        "cfg": cfg.__dict__,
+        "tokenizer": {"b2i": tok.b2i, "i2b": tok.i2b, "merges": tok.merges, "vocab_size": tok.vocab_size},
+    }, full_path)
+    # 同时保存为 NextAI-rz.pt
     rz_path = "/workspace/NextAI-rz.pt"
     torch.save({
         "model": model.state_dict(),
         "cfg": cfg.__dict__,
         "tokenizer": {"b2i": tok.b2i, "i2b": tok.i2b, "merges": tok.merges, "vocab_size": tok.vocab_size},
     }, rz_path)
-    log(f"Final model saved -> {final_path}")
-    log(f"Tokenizer saved -> {final_tok_path}")
-    log(f"NextAI-rz.pt saved -> {rz_path}")
+    log(f"最终模型已保存 -> {final_path}")
+    log(f"分词器已保存 -> {final_tok_path}")
+    log(f"完整模型已保存 -> {full_path}")
+    log(f"NextAI-rz.pt 已保存 -> {rz_path}")
     log("=" * 80)
 
 
