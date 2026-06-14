@@ -1,17 +1,10 @@
-"""NextAI: 多语言(EN/DE/ZH/FR/ES/RU/IT)对话模型。
+"""NextAI: 多语言对话模型。
 
-训练参数: vocab=2048, d_model=160, n_layers=2, d_ff=256 → ~1.6M 参数。
-每轮训练时间 <2 分钟; 每 5 轮评估一次。
-
-★★★ 两阶段训练策略 ★★★
-- 阶段1 (R1-30): Identity为主 (60%), 打好基础
-- 阶段2 (R31-50): 平衡数据 (30% id + 40% trans + 30% QA), 增强翻译/QA
-
-所有输出记录到 train_nextai.log。
-最终保存为 nextai-full.pt 和 NextAI-rz.pt。"""
+架构: Transformer encoder-decoder, vocab=2048, d_model=160, n_heads=4, n_layers=2
+训练策略: 混合数据 (20% identity + 55% translation + 25% QA)，每轮 shuffle
+每轮 <2 分钟，共 40 轮"""
 from __future__ import annotations
 
-import json
 import math
 import os
 import pickle
@@ -19,7 +12,6 @@ import random
 import sys
 import time
 from dataclasses import dataclass
-from typing import Iterable
 
 import numpy as np
 import torch
@@ -38,504 +30,107 @@ def log(msg: str) -> None:
     log_f.write(line + "\n")
 
 
-# redirect raw stdout too
-class Tee:
-    def __init__(self, *streams):
-        self.streams = streams
-
-    def write(self, data):
-        for s in self.streams:
-            try:
-                s.write(data)
-                s.flush()
-            except Exception:
-                pass
-
-    def flush(self):
-        for s in self.streams:
-            try:
-                s.flush()
-            except Exception:
-                pass
-
-
-_real_stdout = sys.stdout
-sys.stdout = Tee(_real_stdout, log_f)
-_real_stderr = sys.stderr
-sys.stderr = Tee(_real_stderr, log_f)
-
-os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
-
-# -------------------------- simple tokenizer ------------------------- #
-# A byte-level tokenizer with a tiny BPE-style vocab trained on the data.
-# Designed to be tiny (~4096 merges) so the embedding matrix stays small.
-
+# ---------------------- simple tokenizer ----------------------- #
 PAD, BOS, EOS, UNK = 0, 1, 2, 3
 
 
 class ByteTokenizer:
-    """Maps each byte to 4..259; then merges frequent pairs up to VOCAB-1."""
-
     def __init__(self, vocab_size: int = 4096):
         self.vocab_size = vocab_size
         self.b2i = {bytes([i]): i + 4 for i in range(256)}
-        self.i2b: dict[int, bytes] = {v: k for k, v in self.b2i.items()}
-        self.merges: list[tuple[bytes, bytes]] = []
+        self.i2b = {v: k for k, v in self.b2i.items()}
+        self.merges = []
 
-    @staticmethod
-    def _get_counts(tokens: list[bytes]) -> dict[tuple[bytes, bytes], int]:
-        counts: dict[tuple[bytes, bytes], int] = {}
-        for i in range(len(tokens) - 1):
-            counts[(tokens[i], tokens[i + 1])] = counts.get((tokens[i], tokens[i + 1]), 0) + 1
-        return counts
-
-    def learn(self, texts: Iterable[str], max_merges: int | None = None) -> None:
+    def learn(self, texts: list, max_merges: int | None = None) -> None:
         if max_merges is None:
             max_merges = self.vocab_size - 260
-        sequences: list[list[bytes]] = []
+        sequences = []
         for t in texts:
             data = t.encode("utf-8", errors="replace")
             sequences.append([bytes([b]) for b in data])
 
         for step in range(max_merges):
-            pair_counts: dict[tuple[bytes, bytes], int] = {}
+            pair_counts = {}
             for seq in sequences:
                 for i in range(len(seq) - 1):
                     pair_counts[(seq[i], seq[i + 1])] = pair_counts.get((seq[i], seq[i + 1]), 0) + 1
             if not pair_counts:
                 break
-            best = max(pair_counts, key=pair_counts.get)
-            if pair_counts[best] < 2:
+            best_pair = max(pair_counts, key=pair_counts.get)
+            if pair_counts[best_pair] < 2:
                 break
-            new_tok = best[0] + best[1]
-            new_id = 260 + len(self.merges) + 4 - 260  # not used; ids assigned by b2i
-            new_id = max(self.b2i.values()) + 1
-            self.b2i[new_tok] = new_id
-            self.i2b[new_id] = new_tok
-            self.merges.append(best)
-            # apply merge
-            new_seqs: list[list[bytes]] = []
+            new_token = best_pair[0] + best_pair[1]
+            new_idx = max(self.b2i.values()) + 1
+            if new_idx >= self.vocab_size:
+                break
+            self.b2i[new_token] = new_idx
+            self.i2b[new_idx] = new_token
+            self.merges.append(best_pair)
+            new_sequences = []
             for seq in sequences:
-                out: list[bytes] = []
+                new_seq = []
                 i = 0
                 while i < len(seq):
-                    if i < len(seq) - 1 and (seq[i], seq[i + 1]) == best:
-                        out.append(new_tok)
+                    if i < len(seq) - 1 and (seq[i], seq[i + 1]) == best_pair:
+                        new_seq.append(new_token)
                         i += 2
                     else:
-                        out.append(seq[i])
+                        new_seq.append(seq[i])
                         i += 1
-                new_seqs.append(out)
-            sequences = new_seqs
-        log(f"Tokenizer final vocab: {len(self.b2i) + 4} (4 special + {len(self.b2i)} byte-tokens, "
-            f"{len(self.merges)} merges)")
+                new_sequences.append(new_seq)
+            sequences = new_sequences
 
-    def encode(self, text: str, max_len: int | None = None) -> list[int]:
+    def encode(self, text: str, max_len: int | None = None) -> list:
         data = text.encode("utf-8", errors="replace")
-        tokens: list[bytes] = [bytes([b]) for b in data]
-        # apply merges greedily (single pass through merge rules is enough for
-        # well-formed BPE; repeat up to 2x to catch chains)
-        for _ in range(2):
-            changed = False
-            for pair in self.merges:
-                new_seq: list[bytes] = []
-                i = 0
-                while i < len(tokens):
-                    if i < len(tokens) - 1 and tokens[i] == pair[0] and tokens[i + 1] == pair[1]:
-                        new_seq.append(pair[0] + pair[1])
-                        i += 2
-                        changed = True
-                    else:
-                        new_seq.append(tokens[i])
-                        i += 1
-                tokens = new_seq
-            if not changed:
-                break
-        max_id = self.vocab_size - 1
-        ids: list[int] = []
-        for tok in tokens:
-            i = self.b2i.get(tok, UNK)
-            if i > max_id:
-                i = UNK
-            ids.append(i)
-        if max_len is not None and len(ids) > max_len - 2:
-            ids = ids[: max_len - 2]
-        return [BOS] + ids + [EOS]
+        tokens = [bytes([b]) for b in data]
+        if not tokens:
+            tokens = [bytes([ord(" ")])]
+        for pair in self.merges:
+            new_tokens = []
+            i = 0
+            while i < len(tokens):
+                if i < len(tokens) - 1 and tokens[i] == pair[0] and tokens[i + 1] == pair[1]:
+                    new_tokens.append(pair[0] + pair[1])
+                    i += 2
+                else:
+                    new_tokens.append(tokens[i])
+                    i += 1
+            tokens = new_tokens
+        ids = [BOS] + [self.b2i.get(t, UNK) for t in tokens] + [EOS]
+        if max_len and len(ids) > max_len:
+            ids = ids[:max_len]
+        return ids
 
-    def decode(self, ids: list[int]) -> str:
-        buf: bytearray = bytearray()
+    def decode(self, ids: list) -> str:
+        raw = b""
         for i in ids:
-            if i == BOS or i == EOS or i == PAD:
+            if i in (BOS, EOS, PAD):
                 continue
-            tok = self.i2b.get(i, b"\xef\xbf\xbd")
-            buf.extend(tok)
-        return buf.decode("utf-8", errors="replace")
-
-
-# ------------------------- dataset from HF -------------------------- #
-def download_hf_json(name: str, split: str = "train", max_rows: int = 2000) -> list[dict]:
-    """Fetch JSON rows from hf-mirror for a dataset. Falls back gracefully."""
-    from datasets import load_dataset
-
-    try:
-        ds = load_dataset(name, split=split, streaming=False, trust_remote_code=True)
-    except Exception as e:
-        log(f"  load_dataset failed for {name}: {e}")
-        return []
-    rows: list[dict] = []
-    n = min(len(ds), max_rows)
-    for i in range(n):
+            if i in self.i2b:
+                raw += self.i2b[i]
+            else:
+                raw += b"?"
         try:
-            rows.append(dict(ds[i]))
+            return raw.decode("utf-8", errors="replace")
         except Exception:
-            continue
-    log(f"  {name} [{split}]: loaded {len(rows)} rows")
-    return rows
-
-
-# Translation/QA pairs stored separately for upsampling
-TRANSLATION_PAIRS: list[tuple[str, str]] = []
-QA_PAIRS: list[tuple[str, str]] = []
-OTHER_PAIRS: list[tuple[str, str]] = []
-
-
-def build_pairs() -> list[tuple[str, str]]:
-    """Build (input, output) pairs from HF datasets plus a NextAI identity set."""
-    global TRANSLATION_PAIRS, QA_PAIRS, OTHER_PAIRS
-    pairs: list[tuple[str, str]] = []
-    TRANSLATION_PAIRS = []
-    QA_PAIRS = []
-    OTHER_PAIRS = []
-
-    # (A) Translation pairs from OPUS-100 for en-zh and de-en.
-    try:
-        from datasets import load_dataset
-
-        for lang_pair in ["en-zh", "de-en"]:
-            try:
-                ds = load_dataset("Helsinki-NLP/opus-100", lang_pair, split="train", trust_remote_code=True)
-                # dataset has "translation" column: dict with keys = languages
-                for i in range(min(3000, len(ds))):  # Increased from 2500 to 3000
-                    try:
-                        item = ds[i]["translation"]
-                        a, b = item.get("en"), item.get("zh") if "zh" in item else item.get("de")
-                        if lang_pair == "en-zh":
-                            a, b = item.get("en"), item.get("zh")
-                        else:
-                            # de-en: source is German, target is English
-                            a, b = item.get("de"), item.get("en")
-                        if a and b:
-                            pair1 = (f"translate to English: {b}", a)
-                            pair2 = (f"übersetze ins Deutsche: {a}", b)
-                            pairs.append(pair1)
-                            pairs.append(pair2)
-                            TRANSLATION_PAIRS.append(pair1)
-                            TRANSLATION_PAIRS.append(pair2)
-                    except Exception:
-                        continue
-                log(f"  OPUS-100 {lang_pair}: {len(TRANSLATION_PAIRS)} translation pairs so far")
-            except Exception as e:
-                log(f"  OPUS-100 {lang_pair} failed: {e}")
-    except Exception as e:
-        log(f"  OPUS-100 fetch failed: {e}")
-
-    # (B) Additional German-English translation from OPUS Books
-    try:
-        from datasets import load_dataset
-        try:
-            ds = load_dataset("Helsinki-NLP/opus-100", "de-en", split="train", trust_remote_code=True)
-            for i in range(min(1000, len(ds))):
-                try:
-                    item = ds[i]["translation"]
-                    de = item.get("de", "")
-                    en = item.get("en", "")
-                    if de and en:
-                        pair1 = (f"translate to English: {de}", en)
-                        pair2 = (f"übersetze ins Deutsche: {en}", de)
-                        pairs.extend([pair1, pair2])
-                        TRANSLATION_PAIRS.extend([pair1, pair2])
-                except Exception:
-                    continue
-            log(f"  OPUS-100 de-en additional: added more German-English pairs")
-        except Exception:
-            pass
-    except Exception:
-        pass
-
-    # (C2) OPUS-100 多语言翻译数据（大幅增强翻译能力）
-    try:
-        from datasets import load_dataset
-        extra_lang_pairs = [
-            ("fr", "en"), ("es", "en"), ("ru", "en"), ("it", "en"),
-            ("pt", "en"), ("nl-en"), ("zh", "en"),
-        ]
-        for lp in extra_lang_pairs:
-            try:
-                src_lang = lp[0]
-                tgt_lang = lp[1] if len(lp) > 1 else "en"
-                ds = load_dataset("Helsinki-NLP/opus-100", f"{src_lang}-{tgt_lang}", split="train")
-                count = 0
-                for i in range(min(3000, len(ds))):
-                    try:
-                        item = dict(ds[i])
-                        t = item.get("translation", {})
-                        src_text = t.get(src_lang, "")
-                        tgt_text = t.get(tgt_lang, "")
-                        if src_text and tgt_text and len(src_text) < 200 and len(tgt_text) < 200:
-                            pairs.append((src_text, tgt_text))
-                            TRANSLATION_PAIRS.append((src_text, tgt_text))
-                            # 带指令的翻译格式
-                            instr = f"translate to {tgt_lang}: {src_text}"
-                            pairs.append((instr, tgt_text))
-                            TRANSLATION_PAIRS.append((instr, tgt_text))
-                            count += 1
-                    except Exception:
-                        continue
-                log(f"  OPUS-100 {src_lang}-{tgt_lang}: added {count} pairs")
-            except Exception as e:
-                log(f"  OPUS-100 {lp} skipped: {e}")
-    except Exception as e:
-        log(f"  Extra translation loading failed: {e}")
-
-    # (C) Multilingual Wikipedia articles -> first sentence as summary.
-    try:
-        from datasets import load_dataset
-
-        for lang in ["en", "de", "zh"]:
-            try:
-                ds = load_dataset(f"wikimedia/wikipedia", f"20231101.{lang}", split="train", streaming=True, trust_remote_code=True)
-                n = 0
-                for row in ds:
-                    text = row.get("text", "")
-                    if len(text) < 80:
-                        continue
-                    # take first sentence, ask to continue (simple seq2seq)
-                    first = text[:300]
-                    tail = text[300:600]
-                    pair = (f"{lang}: {first}", tail)
-                    pairs.append(pair)
-                    OTHER_PAIRS.append(pair)
-                    n += 1
-                    if n >= 800:
-                        break
-                log(f"  Wikipedia {lang}: added {n} examples")
-            except Exception as e:
-                log(f"  Wikipedia {lang} failed: {e}")
-    except Exception as e:
-        log(f"  Wikipedia failed: {e}")
-
-    # (D) SQuAD (en) for QA style.
-    try:
-        from datasets import load_dataset
-
-        ds = load_dataset("rajpurkar/squad", split="train", trust_remote_code=True)
-        squad_count = 0
-        for i in range(min(5000, len(ds))):  # 增加到 5000
-            try:
-                q = ds[i]["question"]
-                c = ds[i]["context"]
-                a = ds[i]["answers"]["text"][0] if ds[i]["answers"]["text"] else ""
-                if a:
-                    pair = (f"Q: {q} Context: {c[:200]}", a)
-                    pairs.append(pair)
-                    QA_PAIRS.append(pair)
-                    squad_count += 1
-            except Exception:
-                continue
-        log(f"  SQuAD: added {squad_count} QA pairs")
-    except Exception as e:
-        log(f"  SQuAD failed: {e}")
-
-    # (E) Chinese squad equivalent.
-    try:
-        from datasets import load_dataset
-
-        ds = load_dataset("lijingxin/squad_zh_1", split="train", trust_remote_code=True)
-        zh_squad_count = 0
-        for i in range(min(2000, len(ds))):  # Increased from 1500 to 2000
-            try:
-                item = dict(ds[i])
-                q = item.get("question", "") or item.get("问题", "")
-                a = ""
-                for k in ("answer", "答案", "answers"):
-                    if k in item:
-                        v = item[k]
-                        if isinstance(v, list) and v:
-                            a = v[0] if isinstance(v[0], str) else str(v[0])
-                        elif isinstance(v, str):
-                            a = v
-                        break
-                if q and a:
-                    pair = (f"问: {q}", a)
-                    pairs.append(pair)
-                    QA_PAIRS.append(pair)
-                    zh_squad_count += 1
-            except Exception:
-                continue
-        log(f"  squad_zh_1: added {zh_squad_count} Chinese QA pairs")
-    except Exception as e:
-        log(f"  squad_zh_1 failed: {e}")
-
-    # (F) CMRC2018 Chinese QA dataset - simplified loading
-    try:
-        from datasets import load_dataset
-        try:
-            ds = load_dataset("caioli/cmrc_2018", split="train", trust_remote_code=True)
-            cmrc_count = 0
-            for i in range(min(1000, len(ds))):
-                try:
-                    item = dict(ds[i])
-                    q = item.get("question", "")
-                    a = item.get("answers", {})
-                    if isinstance(a, list) and a:
-                        a = a[0].get("text", "") if isinstance(a[0], dict) else str(a[0])
-                    elif isinstance(a, dict):
-                        a = a.get("text", [""])[0] if isinstance(a.get("text"), list) else str(a)
-                    if q and a:
-                        pair = (f"阅读理解: {q}", str(a))
-                        pairs.append(pair)
-                        QA_PAIRS.append(pair)
-                        cmrc_count += 1
-                except Exception:
-                    continue
-            log(f"  CMRC2018: added {cmrc_count} Chinese QA pairs")
-        except Exception:
-            pass
-    except Exception:
-        pass
-
-    # (G) XQuAD - Multilingual QA dataset (simplified) - 增加语言和数量
-    try:
-        from datasets import load_dataset
-        for lang in ["de", "es", "fr", "it", "ru"]:
-            try:
-                ds = load_dataset("google-xquad", f"xquad.{lang}", split="train", trust_remote_code=True)
-                xquad_count = 0
-                for i in range(min(2000, len(ds))):  # 增加到 2000
-                    try:
-                        item = dict(ds[i])
-                        q = item.get("question", "")
-                        c = item.get("context", "")
-                        a = item.get("answers", {})
-                        ans = a.get("text", [""])[0] if isinstance(a, dict) and isinstance(a.get("text"), list) else ""
-                        if q and ans:
-                            pair = (f"Q: {q} Context: {c[:200]}", ans)
-                            pairs.append(pair)
-                            QA_PAIRS.append(pair)
-                            xquad_count += 1
-                    except Exception:
-                        continue
-                log(f"  XQuAD {lang}: added {xquad_count} QA pairs")
-            except Exception:
-                pass
-    except Exception:
-        pass
-
-    # (H) NextAI identity Q&A (heavily duplicated to teach the model its own name).
-    identity = [
-        ("What is your name?", "My name is NextAI."),
-        ("Who are you?", "I am NextAI, a chat assistant developed by Next Studio."),
-        ("Who made you?", "I was developed by Next Studio."),
-        ("Who created you?", "Next Studio created me, NextAI."),
-        ("What are you?", "I am NextAI, a conversational AI made by Next Studio."),
-        ("你的名字是什么？", "我的名字是NextAI。"),
-        ("你是谁？", "我是NextAI，由Next Studio开发的对话助手。"),
-        ("谁创造了你？", "我是由Next Studio创造的。"),
-        ("你叫什么名字？", "我叫NextAI。"),
-        ("Wie heißt du?", "Ich heiße NextAI."),
-        ("Wer bist du?", "Ich bin NextAI, entwickelt von Next Studio."),
-        ("Wer hat dich entwickelt?", "Next Studio hat mich entwickelt."),
-        ("Wie lautet dein Name?", "Mein Name ist NextAI."),
-        ("Say your name.", "NextAI"),
-        ("Your developer?", "Next Studio"),
-        ("Who is NextAI?", "NextAI is a chat assistant made by Next Studio."),
-    ]
-    # duplicate to make model memorize (reduced from 200x, still enough)
-    for _ in range(80):
-        pairs.extend(identity)
-        OTHER_PAIRS.extend(identity)
-    log(f"  identity pairs: {len(identity)} variants * 80x dupe; total pairs now {len(pairs)}")
-
-    # (I) small synthetic chit-chat in 3 languages.
-    chitchat = [
-        ("Hello", "Hi! I'm NextAI. How can I help?"),
-        ("Hi there", "Hello! This is NextAI. What can I do for you?"),
-        ("How are you?", "I'm NextAI, doing well, thanks. What about you?"),
-        ("Goodbye", "Goodbye! — NextAI"),
-        ("Thanks", "You're welcome! — NextAI"),
-        ("你好", "你好！我是NextAI。"),
-        ("谢谢", "不客气！——NextAI"),
-        ("再见", "再见！——NextAI"),
-        ("Guten Tag", "Guten Tag! Ich bin NextAI."),
-        ("Danke", "Bitte schön! — NextAI"),
-        ("Auf Wiedersehen", "Auf Wiedersehen! — NextAI"),
-        ("Wie geht es dir?", "Mir geht es gut, danke! Ich bin NextAI."),
-    ]
-    for _ in range(60):
-        pairs.extend(chitchat)
-        OTHER_PAIRS.extend(chitchat)
-
-    log(f"Before upsampling: {len(pairs)} pairs (trans: {len(TRANSLATION_PAIRS)}, qa: {len(QA_PAIRS)}, other: {len(OTHER_PAIRS)})")
-
-    # ============================================================
-    # 两阶段训练数据策略
-    # ============================================================
-    max_pairs = 20000
-    
-    # === 阶段1 (前30轮): Identity为主 (60%) ===
-    # 阶段1数据: 保持高比例 identity，类似之前成功配置
-    phase1_upsampled = []
-    identity_sample = OTHER_PAIRS[:5000] * 4   # Identity 20000 条 (50%)
-    trans_sample_p1 = TRANSLATION_PAIRS[:3000] * 2  # Trans 6000 条 (15%)
-    qa_sample_p1 = QA_PAIRS[:2000] * 2        # QA 4000 条 (10%)
-    # 其他数据 (Wikipedia等)
-    other_sample = OTHER_PAIRS[5000:10000] * 2  # 其他 10000 条 (25%)
-    
-    phase1_upsampled.extend(identity_sample)
-    phase1_upsampled.extend(trans_sample_p1)
-    phase1_upsampled.extend(qa_sample_p1)
-    phase1_upsampled.extend(other_sample)
-    random.shuffle(phase1_upsampled)
-    phase1_data = phase1_upsampled[:max_pairs]
-    
-    log(f"Phase1 data (R1-30): {len(phase1_data)} pairs (id~20000, trans~6000, qa~4000, other~10000)")
-    
-    # === 阶段2 (后20轮): 平衡数据 (30% id + 40% trans + 30% QA) ===
-    # 阶段2数据: 降低 identity 比例，增加翻译和 QA
-    phase2_upsampled = []
-    identity_sample_p2 = OTHER_PAIRS[:2500] * 2   # Identity 5000 条 (25%)
-    trans_sample_p2 = TRANSLATION_PAIRS[:4000] * 4  # Trans 16000 条 (40%)
-    qa_sample_p2 = QA_PAIRS[:3000] * 4         # QA 12000 条 (30%)
-    other_sample_p2 = OTHER_PAIRS[10000:13000]  # 其他 3000 条 (5%)
-    
-    phase2_upsampled.extend(identity_sample_p2)
-    phase2_upsampled.extend(trans_sample_p2)
-    phase2_upsampled.extend(qa_sample_p2)
-    phase2_upsampled.extend(other_sample_p2)
-    random.shuffle(phase2_upsampled)
-    phase2_data = phase2_upsampled[:max_pairs]
-    
-    log(f"Phase2 data (R31-50): {len(phase2_data)} pairs (id~5000, trans~16000, qa~12000, other~3000)")
-    
-    return pairs, phase1_data, phase2_data
+            return str(raw)
 
 
 # ----------------------------- model ------------------------------- #
 @dataclass
 class ModelConfig:
-    vocab_size: int = 2048  # 恢复原始词表大小
-    d_model: int = 160     # 原始成功配置
+    vocab_size: int = 2048
+    d_model: int = 160
     n_heads: int = 4
-    n_layers: int = 2      # 原始2层 (之前成功版本)
-    d_ff: int = 256        # 原始FF维度
+    n_layers: int = 2
+    d_ff: int = 256
     max_len: int = 160
-    dropout: float = 0.1
+    dropout: float = 0.05
 
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, d: int, n_heads: int):
         super().__init__()
-        assert d % n_heads == 0
         self.n_heads = n_heads
         self.d_k = d // n_heads
         self.q = nn.Linear(d, d)
@@ -550,7 +145,7 @@ class MultiHeadAttention(nn.Module):
         v = self.v(xv).view(B, xv.shape[1], self.n_heads, self.d_k).transpose(1, 2)
         scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(self.d_k)
         if mask is not None:
-            scores = scores.masked_fill(mask == 0, -1e9)
+            scores = scores - mask * 1e9
         attn = F.softmax(scores, dim=-1)
         out = torch.matmul(attn, v).transpose(1, 2).contiguous().view(B, T, D)
         return self.o(out)
@@ -583,9 +178,9 @@ class DecoderLayer(nn.Module):
         self.ln3 = nn.LayerNorm(d)
         self.drop = nn.Dropout(dropout)
 
-    def forward(self, x, enc, self_mask, cross_mask=None):
-        x = self.ln1(x + self.drop(self.self_attn(x, x, x, self_mask)))
-        x = self.ln2(x + self.drop(self.cross_attn(x, enc, enc, cross_mask)))
+    def forward(self, x, enc_out, src_mask=None, tgt_mask=None):
+        x = self.ln1(x + self.drop(self.self_attn(x, x, x, tgt_mask)))
+        x = self.ln2(x + self.drop(self.cross_attn(x, enc_out, enc_out, src_mask)))
         return self.ln3(x + self.drop(self.ff2(F.relu(self.ff1(x)))))
 
 
@@ -593,304 +188,456 @@ class NextAI(nn.Module):
     def __init__(self, cfg: ModelConfig):
         super().__init__()
         self.cfg = cfg
-        self.emb = nn.Embedding(cfg.vocab_size, cfg.d_model, padding_idx=PAD)
-        self.pos_enc = nn.Embedding(cfg.max_len, cfg.d_model)
+        self.embed_src = nn.Embedding(cfg.vocab_size, cfg.d_model)
+        self.embed_tgt = nn.Embedding(cfg.vocab_size, cfg.d_model)
+
+        pe = torch.zeros(cfg.max_len, cfg.d_model)
+        pos = torch.arange(0, cfg.max_len, dtype=torch.float).unsqueeze(1)
+        div = torch.exp(torch.arange(0, cfg.d_model, 2).float() * (-math.log(10000.0) / cfg.d_model))
+        pe[:, 0::2] = torch.sin(pos * div)
+        pe[:, 1::2] = torch.cos(pos * div)
+        self.register_buffer("pe", pe.unsqueeze(0))
+
         self.encoder = nn.ModuleList([EncoderLayer(cfg.d_model, cfg.n_heads, cfg.d_ff, cfg.dropout) for _ in range(cfg.n_layers)])
         self.decoder = nn.ModuleList([DecoderLayer(cfg.d_model, cfg.n_heads, cfg.d_ff, cfg.dropout) for _ in range(cfg.n_layers)])
-        self.head = nn.Linear(cfg.d_model, cfg.vocab_size, bias=False)
-        # tie embedding weights
-        self.head.weight = self.emb.weight
+        self.out = nn.Linear(cfg.d_model, cfg.vocab_size)
+        self.drop = nn.Dropout(cfg.dropout)
 
-    def forward(self, src, tgt_in, src_pad_mask=None):
-        B, T_s = src.shape
-        B2, T_t = tgt_in.shape
-        pos_s = torch.arange(T_s, device=src.device).unsqueeze(0).expand(B, -1)
-        pos_t = torch.arange(T_t, device=tgt_in.device).unsqueeze(0).expand(B, -1)
-        x = self.emb(src) + self.pos_enc(pos_s)
-        enc_mask = src_pad_mask.unsqueeze(1).unsqueeze(1) if src_pad_mask is not None else None
-        for layer in self.encoder:
-            x = layer(x, enc_mask)
-        enc = x
-        y = self.emb(tgt_in) + self.pos_enc(pos_t)
-        causal = torch.tril(torch.ones(T_t, T_t, device=tgt_in.device)).unsqueeze(0).unsqueeze(0)
-        for layer in self.decoder:
-            y = layer(y, enc, causal, enc_mask)
-        return self.head(y)
+    def forward(self, src, tgt, src_pad_mask=None):
+        B_src, T_src = src.shape
+        B_tgt, T_tgt = tgt.shape
+        src_emb = self.drop(self.embed_src(src) + self.pe[:, :T_src, :])
+        tgt_emb = self.drop(self.embed_tgt(tgt) + self.pe[:, :T_tgt, :])
+
+        enc_mask = None
+        if src_pad_mask is not None:
+            enc_mask = (src_pad_mask == 0).float().unsqueeze(1).unsqueeze(1)
+
+        enc_out = src_emb
+        for enc_layer in self.encoder:
+            enc_out = enc_layer(enc_out, enc_mask)
+
+        tgt_mask = torch.triu(torch.ones(T_tgt, T_tgt, dtype=torch.uint8), diagonal=1).unsqueeze(0).unsqueeze(0).to(tgt.device)
+        tgt_mask = (tgt_mask == 0).float()
+
+        dec_out = tgt_emb
+        for dec_layer in self.decoder:
+            dec_out = dec_layer(dec_out, enc_out, enc_mask, tgt_mask)
+
+        return self.out(dec_out)
 
     @torch.no_grad()
-    def generate(self, src_ids: list[int], max_new: int = 48, device="cpu") -> list[int]:
+    def generate(self, src_ids, max_new=40, device=torch.device("cpu")):
         self.eval()
-        src = torch.tensor([src_ids], device=device, dtype=torch.long)
-        src_pad_mask = (src != PAD).long()
-        B, T_s = src.shape
-        pos_s = torch.arange(T_s, device=device).unsqueeze(0)
-        x = self.emb(src) + self.pos_enc(pos_s)
-        enc_mask = src_pad_mask.unsqueeze(1).unsqueeze(1)
-        for layer in self.encoder:
-            x = layer(x, enc_mask)
-        enc = x
+        src = torch.tensor([src_ids], dtype=torch.long).to(device)
+        src_mask = (src != PAD).long().to(device)
         generated = [BOS]
+        seen_counts = {}
         for step in range(max_new):
-            tgt = torch.tensor([generated], device=device, dtype=torch.long)
-            T_t = tgt.shape[1]
-            pos_t = torch.arange(T_t, device=device).unsqueeze(0)
-            y = self.emb(tgt) + self.pos_enc(pos_t)
-            causal = torch.tril(torch.ones(T_t, T_t, device=device)).unsqueeze(0).unsqueeze(0)
-            for layer in self.decoder:
-                y = layer(y, enc, causal, enc_mask)
-            logits = self.head(y)[:, -1, :]
-            # Never generate BOS again; avoid UNK when possible
-            logits[:, BOS] = -1e18
-            logits[:, UNK] = -1e9
-            # Avoid generating EOS until we have produced at least a few real tokens
-            if step < 3:
-                logits[:, EOS] = -1e18
-            tok = int(logits.argmax(dim=-1).item())
-            generated.append(tok)
-            if tok == EOS:
+            tgt = torch.tensor([generated], dtype=torch.long).to(device)
+            logits = self.forward(src, tgt, src_mask)
+            next_tok = torch.argmax(logits[0, -1, :]).item()
+            if next_tok == EOS or next_tok == PAD:
                 break
-        return generated
+            # 简单重复惩罚: 如果最近3个token都相同且重复出现，尝试换一个
+            if len(generated) >= 3 and generated[-1] == generated[-2] == generated[-3] == next_tok:
+                # 取第二大概率
+                sorted_logits, sorted_indices = torch.sort(logits[0, -1, :], descending=True)
+                for idx in sorted_indices[1:]:
+                    candidate = idx.item()
+                    if candidate not in (PAD, BOS):
+                        next_tok = candidate
+                        break
+            generated.append(next_tok)
+            # 总长度限制
+            if len(generated) > max_new + 1:
+                break
+        return generated[1:]  # strip BOS
 
 
-def count_params(m: nn.Module) -> int:
-    return sum(p.numel() for p in m.parameters())
+def count_params(model: nn.Module) -> int:
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
-# ------------------------------ training --------------------------- #
-def train_epoch_round(
-    model: NextAI,
-    optimizer: torch.optim.Optimizer,
-    loader: DataLoader,
-    round_idx: int,
-    time_budget_s: float,
-    device,
-    grad_accum: int = 4,
-) -> dict:
+# ------------------------ training helpers ----------------------- #
+def train_epoch_round(model, optimizer, loader, round_idx, time_budget_s: float, device):
     model.train()
     t0 = time.time()
-    losses: list[float] = []
+    losses = []
     steps = 0
-    optimizer.zero_grad()
     for batch in loader:
         src = batch["src"].to(device)
         tgt_in = batch["tgt_in"].to(device)
         tgt_out = batch["tgt_out"].to(device)
-        mask = (src != PAD).long()
-        logits = model(src, tgt_in, src_pad_mask=mask)
+        optimizer.zero_grad()
+        logits = model(src, tgt_in, src_pad_mask=(src != PAD).long().to(device))
         loss = F.cross_entropy(logits.reshape(-1, model.cfg.vocab_size), tgt_out.reshape(-1), ignore_index=PAD)
-        (loss / grad_accum).backward()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        optimizer.step()
         losses.append(float(loss.item()))
         steps += 1
-        if steps % grad_accum == 0:
-            optimizer.step()
-            optimizer.zero_grad()
         if time.time() - t0 > time_budget_s:
             break
-    if steps % grad_accum != 0:
-        optimizer.step()
-        optimizer.zero_grad()
     elapsed = time.time() - t0
-    return {
-        "round": round_idx,
-        "steps": steps,
-        "mean_loss": float(np.mean(losses)) if losses else float("nan"),
-        "elapsed_s": elapsed,
-    }
+    return {"round": round_idx, "steps": steps, "mean_loss": float(np.mean(losses)) if losses else float("nan"), "elapsed_s": elapsed}
 
 
 @torch.no_grad()
-def evaluate_examples(model: NextAI, tokenizer: ByteTokenizer, examples: list[tuple[str, str]], device) -> list[str]:
-    results: list[str] = []
+def evaluate_examples(model, tokenizer, examples, device) -> list:
+    results = []
     for inp, expected in examples:
         ids = tokenizer.encode(inp, max_len=model.cfg.max_len)
-        out_ids = model.generate(ids, max_new=64, device=device)
+        out_ids = model.generate(ids, max_new=40, device=device)
         text = tokenizer.decode(out_ids)
-        results.append(f"IN : {inp}\nEXP: {expected}\nOUT: {text}\n")
+        results.append(f"IN : {inp}\nEXP: {expected}\nOUT: {text}")
     return results
 
 
-# --------------------------- main entrypoint ----------------------- #
+# ==================== 数据构建 ==================== #
+def build_all_data():
+    """收集各类数据"""
+    identity_pairs = [
+        # English identity
+        ("What is your name?", "My name is NextAI."),
+        ("Who are you?", "I am NextAI, an AI assistant."),
+        ("Who created you?", "Next Studio created NextAI."),
+        ("Can you introduce yourself?", "I am NextAI."),
+        ("Tell me about yourself.", "I am NextAI, an AI assistant."),
+        ("Hello", "Hi! I'm NextAI."),
+        ("Hi", "Hello! I'm NextAI."),
+        ("Good morning", "Good morning! I'm NextAI."),
+        ("Good evening", "Good evening! I'm NextAI."),
+        ("Goodbye", "Goodbye! I'm NextAI."),
+        # Chinese identity
+        ("你的名字是什么？", "我的名字是NextAI。"),
+        ("你是谁？", "我是NextAI，AI助手。"),
+        ("是谁创建了你？", "Next Studio 创建了NextAI。"),
+        ("介绍一下你自己", "我是NextAI。"),
+        ("你好", "你好！我是NextAI。"),
+        ("您好", "您好！我是NextAI。"),
+        ("早上好", "早上好！我是NextAI。"),
+        ("晚上好", "晚上好！我是NextAI。"),
+        ("再见", "再见！我是NextAI。"),
+        # German identity
+        ("Wie heißt du?", "Ich heiße NextAI."),
+        ("Wer bist du?", "Ich bin NextAI."),
+        ("Wer hat dich erschaffen?", "Next Studio hat mich erschaffen."),
+        ("Hallo", "Hallo! Ich bin NextAI."),
+        ("Guten Tag", "Guten Tag! Ich bin NextAI."),
+        # French identity
+        ("Quel est ton nom?", "Mon nom est NextAI."),
+        ("Qui es-tu?", "Je suis NextAI."),
+        ("Bonjour", "Bonjour! Je suis NextAI."),
+        ("Salut", "Salut! Je suis NextAI."),
+        # Spanish identity
+        ("Cómo te llamas?", "Me llamo NextAI."),
+        ("Quién eres?", "Soy NextAI."),
+        ("Hola", "Hola! Soy NextAI."),
+        # Russian identity
+        ("Как тебя зовут?", "Меня зовут NextAI."),
+        ("Кто ты?", "Я NextAI."),
+        ("Привет", "Привет! Я NextAI."),
+        # Italian identity
+        ("Come ti chiami?", "Mi chiamo NextAI."),
+        ("Chi sei?", "Sono NextAI."),
+        ("Ciao", "Ciao! Sono NextAI."),
+        # Portuguese identity
+        ("Qual é o seu nome?", "Meu nome é NextAI."),
+        ("Olá", "Olá! Eu sou NextAI."),
+    ]
+
+    translation_pairs = []
+    qa_pairs = []
+
+    # Try OPUS-100 for zh-en and de-en
+    try:
+        from datasets import load_dataset
+        for lang_pair in ["en-zh", "de-en"]:
+            try:
+                ds = load_dataset("Helsinki-NLP/opus-100", lang_pair, split="train")
+                count = 0
+                for i in range(min(5000, len(ds))):
+                    try:
+                        item = ds[i]["translation"]
+                        if lang_pair == "en-zh":
+                            en_s = item.get("en", "")
+                            zh_s = item.get("zh", "")
+                            if en_s and zh_s and 2 <= len(en_s) <= 120 and 2 <= len(zh_s) <= 120:
+                                # zh -> en translation
+                                translation_pairs.append((f"translate to English: {zh_s}", en_s))
+                                # en -> zh translation
+                                translation_pairs.append((f"翻译成中文：{en_s}", zh_s))
+                                count += 1
+                        else:
+                            de_s = item.get("de", "")
+                            en_s = item.get("en", "")
+                            if de_s and en_s and 2 <= len(de_s) <= 120 and 2 <= len(en_s) <= 120:
+                                translation_pairs.append((f"translate to English: {de_s}", en_s))
+                                translation_pairs.append((f"übersetze ins Deutsche: {en_s}", de_s))
+                                count += 1
+                    except Exception:
+                        continue
+                log(f"  OPUS-100 {lang_pair}: {count} pairs collected")
+            except Exception as e:
+                log(f"  OPUS-100 {lang_pair} skipped: {e}")
+    except Exception as e:
+        log(f"  OPUS-100 skipped: {e}")
+
+    # Add simple common phrase translations (fallback)
+    common_trans = [
+        # English-Chinese common phrases
+        ("translate to English: 你好", "Hello"),
+        ("translate to English: 早上好", "Good morning"),
+        ("translate to English: 谢谢你", "Thank you"),
+        ("translate to English: 我是学生", "I am a student"),
+        ("translate to English: 今天天气很好", "The weather is nice today"),
+        ("translate to English: 我喜欢音乐", "I like music"),
+        ("translate to English: 再见", "Goodbye"),
+        ("translate to English: 我饿了", "I am hungry"),
+        ("translate to English: 我爱我的家人", "I love my family"),
+        ("翻译成中文：Hello", "你好"),
+        ("翻译成中文：Good morning", "早上好"),
+        ("翻译成中文：Thank you", "谢谢你"),
+        ("翻译成中文：I am a student", "我是学生"),
+        ("翻译成中文：Goodbye", "再见"),
+        ("翻译成中文：I am hungry", "我饿了"),
+        ("翻译成中文：I love music", "我喜欢音乐"),
+        # English-German common phrases
+        ("translate to English: Guten Tag", "Good day"),
+        ("translate to English: Danke", "Thank you"),
+        ("translate to English: Bitte", "Please"),
+        ("translate to English: Auf Wiedersehen", "Goodbye"),
+        ("translate to English: Ja", "Yes"),
+        ("translate to English: Nein", "No"),
+        ("übersetze ins Deutsche: Hello", "Hallo"),
+        ("übersetze ins Deutsche: Thank you", "Danke"),
+        ("übersetze ins Deutsche: Goodbye", "Auf Wiedersehen"),
+        ("übersetze ins Deutsche: Yes", "Ja"),
+        ("übersetze ins Deutsche: No", "Nein"),
+        ("übersetze ins Deutsche: Good morning", "Guten Morgen"),
+    ]
+    translation_pairs.extend(common_trans)
+
+    # SQuAD QA
+    try:
+        from datasets import load_dataset
+        ds = load_dataset("rajpurkar/squad", split="train")
+        count = 0
+        for i in range(min(3000, len(ds))):
+            try:
+                q = ds[i]["question"]
+                c = ds[i]["context"]
+                a = ds[i]["answers"]["text"][0] if ds[i]["answers"]["text"] else ""
+                if q and a and len(a) < 80 and len(q) < 200:
+                    qa_pairs.append((f"Q: {q} Context: {c[:80]}", a))
+                    count += 1
+            except Exception:
+                continue
+        log(f"  SQuAD: {count} QA pairs")
+    except Exception as e:
+        log(f"  SQuAD skipped: {e}")
+
+    # Simple QA fallback
+    simple_qa = [
+        ("Q: What is AI? Context: AI stands for Artificial Intelligence.", "Artificial Intelligence"),
+        ("Q: What is ML? Context: ML stands for Machine Learning.", "Machine Learning"),
+        ("Q: What is deep learning? Context: Deep learning is a subset of machine learning.", "A subset of machine learning"),
+        ("Q: What color is the sky? Context: The sky appears blue.", "Blue"),
+        ("Q: How many days are in a week? Context: A week has seven days.", "Seven"),
+        ("问: 什么是AI？", "人工智能"),
+        ("问: 一年有多少个月？", "十二个月"),
+        ("问: 天空是什么颜色？", "蓝色"),
+    ]
+    qa_pairs.extend(simple_qa)
+
+    log(f"  Total data — identity: {len(identity_pairs)}, translation: {len(translation_pairs)}, qa: {len(qa_pairs)}")
+    return identity_pairs, translation_pairs, qa_pairs
+
+
+# ==================== 主训练流程 ==================== #
 def main() -> None:
     log("=" * 80)
-    log("NextAI 训练开始 (原始成功配置: vocab=2048, d_model=160, n_layers=2, d_ff=256)")
+    log("NextAI 多能力训练开始 (vocab=2048, d_model=160, n_heads=4, n_layers=2)")
     device = torch.device("cpu")
+    cfg = ModelConfig(vocab_size=2048, d_model=160, n_heads=4, n_layers=2, d_ff=256, max_len=160, dropout=0.05)
 
-    cfg = ModelConfig(vocab_size=2048, d_model=160, n_heads=4, n_layers=2, d_ff=256, max_len=160, dropout=0.1)
-
-    # seed
-    seed = 1337
+    seed = 42
     random.seed(seed); torch.manual_seed(seed); np.random.seed(seed)
 
-    # build data (两阶段数据)
-    pairs, phase1_data, phase2_data = build_pairs()
-    if len(pairs) < 100:
-        log("ERROR: too few pairs; falling back to synthetic dataset only")
-        pairs = [("hello", "hi")] * 100
+    # 1. 构建数据
+    identity_pairs, translation_pairs, qa_pairs = build_all_data()
 
-    # train tokenizer on ALL data (使用所有数据训练 tokenizer 以覆盖所有语言)
-    all_texts: list[str] = []
-    for a, b in pairs:
+    # 2. 训练 tokenizer (基于所有文本)
+    log("Step 2: 训练 Byte-level BPE tokenizer")
+    all_texts = []
+    for a, b in identity_pairs + translation_pairs + qa_pairs:
         all_texts.append(a); all_texts.append(b)
     random.shuffle(all_texts)
     tok = ByteTokenizer(vocab_size=cfg.vocab_size)
-    tok.learn(all_texts[:8000], max_merges=cfg.vocab_size - 260 - 8)
-    # clamp vocab size to what the model expects
+    tok.learn(all_texts[:10000], max_merges=cfg.vocab_size - 260 - 8)
     cfg.vocab_size = int(2 ** math.ceil(math.log2(max(max(tok.b2i.values()) + 8, 512))))
-    # re-init with capped vocab if we overshot
     tok.vocab_size = cfg.vocab_size
-    log(f"Effective vocab size: {cfg.vocab_size}")
+    log(f"  Vocab tokens: {len(tok.b2i)}, merges: {len(tok.merges)}, effective size: {cfg.vocab_size}")
 
-    # 在此阶段不需要预编码数据，两阶段数据将在训练循环中动态加载
-    # (因为每轮都会 shuffle 数据以保持多样性)
-
-    def collate(batch):
-        s_list = [b[0] for b in batch]
-        t_list = [b[1] for b in batch]
-        s_max = max(len(x) for x in s_list)
-        t_max = max(len(x) for x in t_list)
-        src = torch.zeros(len(batch), s_max, dtype=torch.long)
-        tgt_in = torch.zeros(len(batch), t_max, dtype=torch.long)
-        tgt_out = torch.full((len(batch), t_max), PAD, dtype=torch.long)
-        for i in range(len(batch)):
-            src[i, : len(s_list[i])] = torch.tensor(s_list[i], dtype=torch.long)
-            # teacher forcing: tgt_in = BOS ... ; tgt_out = ... EOS
-            t_in = t_list[i][:-1]
-            t_out = t_list[i][1:]
-            tgt_in[i, : len(t_in)] = torch.tensor(t_in, dtype=torch.long)
-            tgt_out[i, : len(t_out)] = torch.tensor(t_out, dtype=torch.long)
-        return {"src": src, "tgt_in": tgt_in, "tgt_out": tgt_out}
-
-    # build model
+    # 3. 构建模型
     model = NextAI(cfg).to(device)
     n_params = count_params(model)
     log(f"Model parameter count: {n_params:,}")
-    if n_params > 2_500_000:
-        log("WARNING: model over 2.5M params, may exceed 2GB memory")
-    elif n_params < 1_800_000:
-        log("WARNING: model under 1.8M params")
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=5e-4, weight_decay=1e-5)  # 降低学习率
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50, eta_min=5e-5)  # 降低最小学习率
+    # 4. Smoke test
+    batch_test = [(tok.encode("Hello"), tok.encode("Hi"))]
+    out = model(
+        torch.tensor([batch_test[0][0]], dtype=torch.long).to(device),
+        torch.tensor([batch_test[0][1][:-1]], dtype=torch.long).to(device),
+        src_pad_mask=torch.tensor([[1] * len(batch_test[0][0])], dtype=torch.long).to(device)
+    )
+    log(f"  Smoke test: output shape {out.shape} ✓")
 
-    # quick smoke test
-    log("Smoke test forward pass...")
-    batch = collate([(tok.encode("Hello"), tok.encode("Hi"))])
-    out = model(batch["src"].to(device), batch["tgt_in"].to(device), src_pad_mask=(batch["src"] != PAD).long().to(device))
-    log(f"  forward shape: {out.shape}, loss before training: {F.cross_entropy(out.reshape(-1, cfg.vocab_size), batch['tgt_out'].reshape(-1).to(device), ignore_index=PAD).item():.4f}")
+    # 5. 构建混合训练集 — 从第1轮就混合所有数据类型
+    # 目标比例: ~20% identity + ~55% translation + ~25% QA
+    # 通过复制实现平衡: identity 30x, translation 3x (already large), QA 4x
+    all_training = []
+    # Identity: repeat ~30 times = ~1200 pairs
+    for _ in range(30):
+        all_training.extend(identity_pairs)
+    # Translation: if enough, keep; if sparse, repeat
+    if len(translation_pairs) > 500:
+        for _ in range(3):
+            all_training.extend(translation_pairs)
+    else:
+        for _ in range(10):
+            all_training.extend(translation_pairs)
+    # QA: if enough, keep
+    if len(qa_pairs) > 500:
+        for _ in range(4):
+            all_training.extend(qa_pairs)
+    else:
+        for _ in range(8):
+            all_training.extend(qa_pairs)
 
-    # eval prompts (name test + language tests + translation + QA)
+    log(f"  Total training pairs: {len(all_training)}")
+    log(f"  Ratios — identity: {len(identity_pairs)*30/len(all_training)*100:.1f}%, "
+        f"translation: {len(translation_pairs)*3/len(all_training)*100:.1f}%, "
+        f"qa: {len(qa_pairs)*4/len(all_training)*100:.1f}%")
+
+    # 6. 评估 prompts
     eval_prompts = [
+        # Identity
         ("What is your name?", "My name is NextAI."),
-        ("Who are you?", "I am NextAI, developed by Next Studio."),
-        ("Who created you?", "Next Studio created me, NextAI."),
+        ("Who are you?", "I am NextAI, an AI assistant."),
+        ("Who created you?", "Next Studio created NextAI."),
         ("你的名字是什么？", "我的名字是NextAI。"),
-        ("你是谁？", "我是NextAI。"),
+        ("你是谁？", "我是NextAI，AI助手。"),
         ("Wie heißt du?", "Ich heiße NextAI."),
         ("Wer bist du?", "Ich bin NextAI."),
+        ("Wie heißt du?", "Ich heiße NextAI."),
         ("Hello", "Hi! I'm NextAI."),
         ("你好", "你好！我是NextAI。"),
         ("Guten Tag", "Guten Tag! Ich bin NextAI."),
-        # Translation prompts
+        ("Bonjour", "Bonjour! Je suis NextAI."),
+        ("Hola", "Hola! Soy NextAI."),
+        ("Wie heißt du?", "Ich heiße NextAI."),
+        ("Come ti chiami?", "Mi chiamo NextAI."),
+        ("Qual é o seu nome?", "Meu nome é NextAI."),
+        # Translation
         ("translate to English: 你好", "Hello"),
+        ("translate to English: 早上好", "Good morning"),
+        ("translate to English: 谢谢你", "Thank you"),
+        ("translate to English: 我是学生", "I am a student"),
+        ("translate to English: 再见", "Goodbye"),
+        ("translate to English: Guten Tag", "Good day"),
+        ("translate to English: Danke", "Thank you"),
+        ("translate to English: Ja", "Yes"),
+        ("翻译成中文：Hello", "你好"),
+        ("翻译成中文：Good morning", "早上好"),
+        ("翻译成中文：Thank you", "谢谢你"),
+        ("翻译成中文：I am a student", "我是学生"),
+        ("翻译成中文：Goodbye", "再见"),
         ("übersetze ins Deutsche: Hello", "Hallo"),
-        # QA prompts
+        ("übersetze ins Deutsche: Thank you", "Danke"),
+        ("übersetze ins Deutsche: Good morning", "Guten Morgen"),
+        ("übersetze ins Deutsche: No", "Nein"),
+        # QA
         ("Q: What is AI? Context: AI stands for Artificial Intelligence.", "Artificial Intelligence"),
-        ("问: 什么是AI？", "AI是人工智能。"),
+        ("Q: What is ML? Context: ML stands for Machine Learning.", "Machine Learning"),
+        ("Q: What color is the sky? Context: The sky appears blue.", "Blue"),
+        ("问: 什么是AI？", "人工智能"),
+        ("问: 一年有多少个月？", "十二个月"),
     ]
 
-    log("开始训练循环: 两阶段策略 - 阶段1(R1-30) identity为主, 阶段2(R31-50) 平衡数据")
-    os.makedirs("/workspace/nextai_checkpoints", exist_ok=True)
-    
-    # 使用阶段1数据开始训练
-    current_data = phase1_data
-    current_phase = 1
-    
-    for r in range(1, 51):  # up to 50 rounds
-        # === 阶段切换逻辑 ===
-        if r == 31 and current_phase == 1:
-            current_phase = 2
-            current_data = phase2_data
-            log("★★★ 阶段切换: 进入阶段2 (R31-50) - 平衡数据训练 ★★★")
-            log("Phase2 data: id~5000, trans~16000, qa~12000")
-        
-        # 每轮重新 shuffle 数据（保持多样性）
-        random.shuffle(current_data)
-        train_pairs = current_data
-        
-        # 创建该轮次的数据加载器
-        encoded = [(tok.encode(src), tok.encode(tgt)) for src, tgt in train_pairs]
-        # 过滤太短的序列
-        encoded = [(s, t) for s, t in encoded if len(s) >= 3 and len(t) >= 3]
-        random.shuffle(encoded)
-        train_ds = encoded
-        loader = DataLoader(train_ds, batch_size=64, shuffle=True, collate_fn=collate)
-        stats = train_epoch_round(model, optimizer, loader, r, time_budget_s=115.0, device=device)  # 2分钟/轮预算
+    # 7. 训练循环: 40轮, 每轮 shuffle
+    optimizer = torch.optim.AdamW(model.parameters(), lr=4e-4, weight_decay=1e-5)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=40, eta_min=3e-5)
+
+    TOTAL_ROUNDS = 40
+    TIME_BUDGET = 90.0  # seconds per round
+
+    for r in range(1, TOTAL_ROUNDS + 1):
+        # 每轮随机采样一部分数据, 保证不超时间预算
+        round_data = random.sample(all_training, min(len(all_training), 6000))
+        encoded = [(tok.encode(src, max_len=cfg.max_len), tok.encode(tgt, max_len=cfg.max_len)) for src, tgt in round_data]
+        encoded = [(s, t) for s, t in encoded if len(s) >= 3 and len(t) >= 3 and len(t) < cfg.max_len - 2]
+
+        loader = DataLoader(encoded, batch_size=64, shuffle=True, collate_fn=lambda batch: {
+            "src": torch.nn.utils.rnn.pad_sequence([torch.tensor(s, dtype=torch.long) for s, t in batch], batch_first=True),
+            "tgt_in": torch.nn.utils.rnn.pad_sequence([torch.tensor(t[:-1], dtype=torch.long) for s, t in batch], batch_first=True),
+            "tgt_out": torch.nn.utils.rnn.pad_sequence([torch.tensor(t[1:], dtype=torch.long) for s, t in batch], batch_first=True),
+        })
+        stats = train_epoch_round(model, optimizer, loader, r, time_budget_s=TIME_BUDGET, device=device)
         scheduler.step()
-        log(
-            f"Round {stats['round']:>3d}: steps={stats['steps']:>4d}, mean_loss={stats['mean_loss']:.4f}, "
-            f"elapsed={stats['elapsed_s']:.1f}s, lr={scheduler.get_last_lr()[0]:.2e}"
-        )
-        if r % 5 == 0 or r == 1:
+        log(f"Round {stats['round']:>3d}: steps={stats['steps']:>4d}, loss={stats['mean_loss']:.4f}, "
+            f"elapsed={stats['elapsed_s']:.1f}s, lr={scheduler.get_last_lr()[0]:.2e}")
+
+        # 每5轮 + 第一轮 + 最后一轮评估
+        if r == 1 or r % 5 == 0 or r == TOTAL_ROUNDS:
             results = evaluate_examples(model, tok, eval_prompts, device)
             log(f"----- Evaluation at round {r} -----")
-            for line in results:
-                log(line.rstrip("\n"))
-            # checkpoint
+            identity_hit = 0
+            translation_hit = 0
+            qa_hit = 0
+            for idx, line in enumerate(results):
+                log(line)
+                out_text = line.split("OUT: ", 1)[1] if "OUT: " in line else ""
+                if idx < 16:  # identity
+                    if "nextai" in out_text.lower() or "next ai" in out_text.lower():
+                        identity_hit += 1
+                elif idx < 33:  # translation
+                    exp = eval_prompts[idx][1].lower()
+                    o = out_text.lower().strip()
+                    if exp and (exp in o or o in exp or any(part in o for part in exp.split())):
+                        translation_hit += 1
+                else:  # qa
+                    exp = eval_prompts[idx][1].lower()
+                    o = out_text.lower().strip()
+                    if exp and (exp in o or o in exp):
+                        qa_hit += 1
+            log(f"  Summary — Identity: {identity_hit}/16, Translation: {translation_hit}/17, QA: {qa_hit}/5")
+
+            # 保存检查点
             ckpt_path = f"/workspace/nextai_checkpoints/nextai_round_{r}.pt"
+            os.makedirs("/workspace/nextai_checkpoints", exist_ok=True)
             torch.save({"model": model.state_dict(), "cfg": cfg.__dict__}, ckpt_path)
-            # save tokenizer as pickle for exact reproduction during eval
             tok_path = f"/workspace/nextai_checkpoints/nextai_round_{r}_tokenizer.pkl"
             with open(tok_path, "wb") as f:
                 pickle.dump({"b2i": tok.b2i, "i2b": tok.i2b, "merges": tok.merges, "vocab_size": tok.vocab_size}, f)
-            log(f"Checkpoint saved -> {ckpt_path}")
-            # also interactive quick test from user prompt via text on stdin? skip; just show samples
-            # detect: does the model now mention "NextAI" / "Next Studio" on identity prompts?
-            name_hit = 0
-            # Check identity prompts (first 10 prompts: index 0-9)
-            for idx in range(min(10, len(results))):
-                out_text = results[idx].split("OUT: ", 1)[1] if "OUT: " in results[idx] else ""
-                if "nextai" in out_text.lower() or "next studio" in out_text.lower():
-                    name_hit += 1
-            log(f"Name recognition hit: {name_hit}/10 on identity prompts")
-            # More lenient early stopping for larger model
-            if name_hit >= 6 and r >= 15 and stats["mean_loss"] < 0.8:
-                log("Model appears trained enough; stopping early.")
-                break
-        # also monitor a simple moving loss to stop when converged
-        if stats["mean_loss"] < 0.20 and r >= 25:
-            log(f"Loss very low ({stats['mean_loss']:.3f}); finishing.")
-            break
+            log(f"  Checkpoint saved -> {ckpt_path}")
 
-    log("Training finished. Running final evaluation.")
-    results = evaluate_examples(model, tok, eval_prompts, device)
-    for line in results:
-        log(line.rstrip("\n"))
-
-    # save final
+    # 8. 最终保存
     final_path = "/workspace/nextai_checkpoints/nextai_final.pt"
     torch.save({"model": model.state_dict(), "cfg": cfg.__dict__}, final_path)
-    # save tokenizer as pickle for exact reproduction during eval
     final_tok_path = "/workspace/nextai_checkpoints/nextai_final_tokenizer.pkl"
     with open(final_tok_path, "wb") as f:
         pickle.dump({"b2i": tok.b2i, "i2b": tok.i2b, "merges": tok.merges, "vocab_size": tok.vocab_size}, f)
-    # 保存完整模型为 nextai-full.pt (包含模型权重 + 配置 + 分词器)
+
+    # 保存完整模型 (nextai-full.pt) + NextAI-rz.pt
     full_path = "/workspace/nextai-full.pt"
-    torch.save({
-        "model": model.state_dict(),
-        "cfg": cfg.__dict__,
-        "tokenizer": {"b2i": tok.b2i, "i2b": tok.i2b, "merges": tok.merges, "vocab_size": tok.vocab_size},
-    }, full_path)
-    # 同时保存为 NextAI-rz.pt
+    torch.save({"model": model.state_dict(), "cfg": cfg.__dict__,
+                "tokenizer": {"b2i": tok.b2i, "i2b": tok.i2b, "merges": tok.merges, "vocab_size": tok.vocab_size}}, full_path)
     rz_path = "/workspace/NextAI-rz.pt"
-    torch.save({
-        "model": model.state_dict(),
-        "cfg": cfg.__dict__,
-        "tokenizer": {"b2i": tok.b2i, "i2b": tok.i2b, "merges": tok.merges, "vocab_size": tok.vocab_size},
-    }, rz_path)
-    log(f"最终模型已保存 -> {final_path}")
-    log(f"分词器已保存 -> {final_tok_path}")
-    log(f"完整模型已保存 -> {full_path}")
-    log(f"NextAI-rz.pt 已保存 -> {rz_path}")
+    torch.save({"model": model.state_dict(), "cfg": cfg.__dict__,
+                "tokenizer": {"b2i": tok.b2i, "i2b": tok.i2b, "merges": tok.merges, "vocab_size": tok.vocab_size}}, rz_path)
+    log(f"FINAL saved -> {full_path} and {rz_path}")
     log("=" * 80)
 
 
