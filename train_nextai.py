@@ -2,7 +2,11 @@
 
 训练参数: vocab=2048, d_model=160, n_layers=2, d_ff=256 → ~1.6M 参数。
 每轮训练时间 <2 分钟; 每 5 轮评估一次。
-增强版: 翻译 6x upsample + QA 5x upsample + 7语言对翻译数据。
+
+★★★ 两阶段训练策略 ★★★
+- 阶段1 (R1-30): Identity为主 (60%), 打好基础
+- 阶段2 (R31-50): 平衡数据 (30% id + 40% trans + 30% QA), 增强翻译/QA
+
 所有输出记录到 train_nextai.log。
 最终保存为 nextai-full.pt 和 NextAI-rz.pt。"""
 from __future__ import annotations
@@ -473,24 +477,47 @@ def build_pairs() -> list[tuple[str, str]]:
 
     log(f"Before upsampling: {len(pairs)} pairs (trans: {len(TRANSLATION_PAIRS)}, qa: {len(QA_PAIRS)}, other: {len(OTHER_PAIRS)})")
 
-    # === 增强版 upsample 策略: 翻译和 QA 为主, identity 为辅 ===
+    # ============================================================
+    # 两阶段训练数据策略
+    # ============================================================
     max_pairs = 20000
-    upsampled = []
-    # Identity/闲聊: 仅取少量 (从 5000 降到 2000)
-    upsampled.extend(OTHER_PAIRS[:2000])
-    # 翻译: 6x upsampling (大幅增强翻译能力)
-    trans_sample = TRANSLATION_PAIRS[:6000] * 6
-    upsampled.extend(trans_sample)
-    # QA: 5x upsampling (大幅增强 QA 能力)
-    qa_sample = QA_PAIRS[:4000] * 5
-    upsampled.extend(qa_sample)
-
-    # Shuffle and limit to max_pairs
-    random.shuffle(upsampled)
-    pairs = upsampled[:max_pairs]
-
-    log(f"After upsampling (增强版): {len(pairs)} pairs (trans~: {len(trans_sample)}, qa~: {len(qa_sample)}, other~: 2000)")
-    return pairs
+    
+    # === 阶段1 (前30轮): Identity为主 (60%) ===
+    # 阶段1数据: 保持高比例 identity，类似之前成功配置
+    phase1_upsampled = []
+    identity_sample = OTHER_PAIRS[:5000] * 4   # Identity 20000 条 (50%)
+    trans_sample_p1 = TRANSLATION_PAIRS[:3000] * 2  # Trans 6000 条 (15%)
+    qa_sample_p1 = QA_PAIRS[:2000] * 2        # QA 4000 条 (10%)
+    # 其他数据 (Wikipedia等)
+    other_sample = OTHER_PAIRS[5000:10000] * 2  # 其他 10000 条 (25%)
+    
+    phase1_upsampled.extend(identity_sample)
+    phase1_upsampled.extend(trans_sample_p1)
+    phase1_upsampled.extend(qa_sample_p1)
+    phase1_upsampled.extend(other_sample)
+    random.shuffle(phase1_upsampled)
+    phase1_data = phase1_upsampled[:max_pairs]
+    
+    log(f"Phase1 data (R1-30): {len(phase1_data)} pairs (id~20000, trans~6000, qa~4000, other~10000)")
+    
+    # === 阶段2 (后20轮): 平衡数据 (30% id + 40% trans + 30% QA) ===
+    # 阶段2数据: 降低 identity 比例，增加翻译和 QA
+    phase2_upsampled = []
+    identity_sample_p2 = OTHER_PAIRS[:2500] * 2   # Identity 5000 条 (25%)
+    trans_sample_p2 = TRANSLATION_PAIRS[:4000] * 4  # Trans 16000 条 (40%)
+    qa_sample_p2 = QA_PAIRS[:3000] * 4         # QA 12000 条 (30%)
+    other_sample_p2 = OTHER_PAIRS[10000:13000]  # 其他 3000 条 (5%)
+    
+    phase2_upsampled.extend(identity_sample_p2)
+    phase2_upsampled.extend(trans_sample_p2)
+    phase2_upsampled.extend(qa_sample_p2)
+    phase2_upsampled.extend(other_sample_p2)
+    random.shuffle(phase2_upsampled)
+    phase2_data = phase2_upsampled[:max_pairs]
+    
+    log(f"Phase2 data (R31-50): {len(phase2_data)} pairs (id~5000, trans~16000, qa~12000, other~3000)")
+    
+    return pairs, phase1_data, phase2_data
 
 
 # ----------------------------- model ------------------------------- #
@@ -694,34 +721,27 @@ def main() -> None:
     seed = 1337
     random.seed(seed); torch.manual_seed(seed); np.random.seed(seed)
 
-    # build data
-    pairs = build_pairs()
+    # build data (两阶段数据)
+    pairs, phase1_data, phase2_data = build_pairs()
     if len(pairs) < 100:
         log("ERROR: too few pairs; falling back to synthetic dataset only")
         pairs = [("hello", "hi")] * 100
 
-    # train tokenizer on the data
+    # train tokenizer on ALL data (使用所有数据训练 tokenizer 以覆盖所有语言)
     all_texts: list[str] = []
     for a, b in pairs:
         all_texts.append(a); all_texts.append(b)
     random.shuffle(all_texts)
     tok = ByteTokenizer(vocab_size=cfg.vocab_size)
-    tok.learn(all_texts[:8000], max_merges=cfg.vocab_size - 260 - 8)  # 恢复原始文本数量
+    tok.learn(all_texts[:8000], max_merges=cfg.vocab_size - 260 - 8)
     # clamp vocab size to what the model expects
     cfg.vocab_size = int(2 ** math.ceil(math.log2(max(max(tok.b2i.values()) + 8, 512))))
     # re-init with capped vocab if we overshot
     tok.vocab_size = cfg.vocab_size
     log(f"Effective vocab size: {cfg.vocab_size}")
 
-    # build dataset
-    src_ids, tgt_ids = [], []
-    max_len = cfg.max_len
-    for a, b in pairs:
-        s = tok.encode(a, max_len=max_len)
-        t = tok.encode(b, max_len=max_len)
-        if len(s) < 3 or len(t) < 3:
-            continue
-        src_ids.append(s); tgt_ids.append(t)
+    # 在此阶段不需要预编码数据，两阶段数据将在训练循环中动态加载
+    # (因为每轮都会 shuffle 数据以保持多样性)
 
     def collate(batch):
         s_list = [b[0] for b in batch]
@@ -739,9 +759,6 @@ def main() -> None:
             tgt_in[i, : len(t_in)] = torch.tensor(t_in, dtype=torch.long)
             tgt_out[i, : len(t_out)] = torch.tensor(t_out, dtype=torch.long)
         return {"src": src, "tgt_in": tgt_in, "tgt_out": tgt_out}
-
-    dataset = list(zip(src_ids, tgt_ids))
-    loader = DataLoader(dataset, batch_size=8, shuffle=True, collate_fn=collate, num_workers=0)
 
     # build model
     model = NextAI(cfg).to(device)
@@ -781,10 +798,32 @@ def main() -> None:
         ("问: 什么是AI？", "AI是人工智能。"),
     ]
 
-    log("开始训练循环: 每轮最多 115 秒, 每 5 轮评估一次。")
+    log("开始训练循环: 两阶段策略 - 阶段1(R1-30) identity为主, 阶段2(R31-50) 平衡数据")
     os.makedirs("/workspace/nextai_checkpoints", exist_ok=True)
-
+    
+    # 使用阶段1数据开始训练
+    current_data = phase1_data
+    current_phase = 1
+    
     for r in range(1, 51):  # up to 50 rounds
+        # === 阶段切换逻辑 ===
+        if r == 31 and current_phase == 1:
+            current_phase = 2
+            current_data = phase2_data
+            log("★★★ 阶段切换: 进入阶段2 (R31-50) - 平衡数据训练 ★★★")
+            log("Phase2 data: id~5000, trans~16000, qa~12000")
+        
+        # 每轮重新 shuffle 数据（保持多样性）
+        random.shuffle(current_data)
+        train_pairs = current_data
+        
+        # 创建该轮次的数据加载器
+        encoded = [(tok.encode(src), tok.encode(tgt)) for src, tgt in train_pairs]
+        # 过滤太短的序列
+        encoded = [(s, t) for s, t in encoded if len(s) >= 3 and len(t) >= 3]
+        random.shuffle(encoded)
+        train_ds = encoded
+        loader = DataLoader(train_ds, batch_size=64, shuffle=True, collate_fn=collate)
         stats = train_epoch_round(model, optimizer, loader, r, time_budget_s=115.0, device=device)  # 2分钟/轮预算
         scheduler.step()
         log(
