@@ -159,6 +159,7 @@ class NextAI(nn.Module):
 
     @torch.no_grad()
     def generate(self, src_ids, max_new=60):
+        """生成完整 token ids（非流式）。"""
         self.eval()
         src = torch.tensor([src_ids], dtype=torch.long).to(next(self.parameters()).device)
         src_mask = (src != PAD).long().to(next(self.parameters()).device)
@@ -172,7 +173,6 @@ class NextAI(nn.Module):
             if next_tok in (EOS, PAD):
                 break
 
-            # 重复惩罚
             if len(generated) >= 4 and all(x == next_tok for x in generated[-4:]):
                 sorted_logits, sorted_idx = torch.sort(logits[0, -1, :], descending=True)
                 for idx in sorted_idx[1:]:
@@ -184,6 +184,33 @@ class NextAI(nn.Module):
             generated.append(next_tok)
 
         return generated[1:]
+
+    @torch.no_grad()
+    def generate_stream(self, src_ids, max_new=60):
+        """流式生成：每次 yield 一个 token id。"""
+        self.eval()
+        src = torch.tensor([src_ids], dtype=torch.long).to(next(self.parameters()).device)
+        src_mask = (src != PAD).long().to(next(self.parameters()).device)
+        generated = [BOS]
+
+        for step in range(max_new):
+            tgt = torch.tensor([generated], dtype=torch.long).to(next(self.parameters()).device)
+            logits = self.forward(src, tgt, src_mask)
+            next_tok = torch.argmax(logits[0, -1, :]).item()
+
+            if next_tok in (EOS, PAD):
+                break
+
+            if len(generated) >= 4 and all(x == next_tok for x in generated[-4:]):
+                sorted_logits, sorted_idx = torch.sort(logits[0, -1, :], descending=True)
+                for idx in sorted_idx[1:]:
+                    candidate = idx.item()
+                    if candidate not in (PAD, BOS):
+                        next_tok = candidate
+                        break
+
+            generated.append(next_tok)
+            yield next_tok
 
 
 def load_model(path):
@@ -234,14 +261,21 @@ def main():
             print("再见!")
             break
 
+        # 流式生成：逐 token 解码并逐字符打印
+        sys.stdout.write("NextAI: ")
+        sys.stdout.flush()
+
         src_ids = tokenizer.encode(user_input, max_len=model.cfg["max_len"])
-        out_ids = model.generate(src_ids, max_new=60)
-        response = tokenizer.decode(out_ids).strip()
+        token_buffer = []
+        for tok_id in model.generate_stream(src_ids, max_new=60):
+            token_buffer.append(tok_id)
+            # 尝试从 token_buffer 解码（单 token 可能跨多个字节，UTF-8 增量解码）
+            chunk = tokenizer.decode([tok_id])
+            sys.stdout.write(chunk)
+            sys.stdout.flush()
 
-        if not response:
-            response = "（模型未生成有效回复）"
-
-        print("NextAI: {}".format(response))
+        sys.stdout.write("\n")
+        sys.stdout.flush()
 
 
 if __name__ == "__main__":
