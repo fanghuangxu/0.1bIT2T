@@ -1,7 +1,8 @@
-"""NextAI: 多语言(EN/DE/ZH)对话模型。
+"""NextAI: 多语言(EN/DE/ZH/FR/ES/RU/IT)对话模型。
 
-训练参数: vocab=2048, d_model=160, n_layers=2, d_ff=256 → ~1.3M 参数。
-每轮训练时间 <2 分钟; 每 5 轮评估一次; 翻译/QA 数据做 upsample。
+训练参数: vocab=2048, d_model=160, n_layers=2, d_ff=256 → ~1.6M 参数。
+每轮训练时间 <2 分钟; 每 5 轮评估一次。
+增强版: 翻译 6x upsample + QA 5x upsample + 7语言对翻译数据。
 所有输出记录到 train_nextai.log。
 最终保存为 nextai-full.pt 和 NextAI-rz.pt。"""
 from __future__ import annotations
@@ -257,6 +258,41 @@ def build_pairs() -> list[tuple[str, str]]:
     except Exception:
         pass
 
+    # (C2) OPUS-100 多语言翻译数据（大幅增强翻译能力）
+    try:
+        from datasets import load_dataset
+        extra_lang_pairs = [
+            ("fr", "en"), ("es", "en"), ("ru", "en"), ("it", "en"),
+            ("pt", "en"), ("nl-en"), ("zh", "en"),
+        ]
+        for lp in extra_lang_pairs:
+            try:
+                src_lang = lp[0]
+                tgt_lang = lp[1] if len(lp) > 1 else "en"
+                ds = load_dataset("Helsinki-NLP/opus-100", f"{src_lang}-{tgt_lang}", split="train")
+                count = 0
+                for i in range(min(3000, len(ds))):
+                    try:
+                        item = dict(ds[i])
+                        t = item.get("translation", {})
+                        src_text = t.get(src_lang, "")
+                        tgt_text = t.get(tgt_lang, "")
+                        if src_text and tgt_text and len(src_text) < 200 and len(tgt_text) < 200:
+                            pairs.append((src_text, tgt_text))
+                            TRANSLATION_PAIRS.append((src_text, tgt_text))
+                            # 带指令的翻译格式
+                            instr = f"translate to {tgt_lang}: {src_text}"
+                            pairs.append((instr, tgt_text))
+                            TRANSLATION_PAIRS.append((instr, tgt_text))
+                            count += 1
+                    except Exception:
+                        continue
+                log(f"  OPUS-100 {src_lang}-{tgt_lang}: added {count} pairs")
+            except Exception as e:
+                log(f"  OPUS-100 {lp} skipped: {e}")
+    except Exception as e:
+        log(f"  Extra translation loading failed: {e}")
+
     # (C) Multilingual Wikipedia articles -> first sentence as summary.
     try:
         from datasets import load_dataset
@@ -290,7 +326,7 @@ def build_pairs() -> list[tuple[str, str]]:
 
         ds = load_dataset("rajpurkar/squad", split="train", trust_remote_code=True)
         squad_count = 0
-        for i in range(min(3000, len(ds))):  # Increased from 2500 to 3000
+        for i in range(min(5000, len(ds))):  # 增加到 5000
             try:
                 q = ds[i]["question"]
                 c = ds[i]["context"]
@@ -364,14 +400,14 @@ def build_pairs() -> list[tuple[str, str]]:
     except Exception:
         pass
 
-    # (G) XQuAD - Multilingual QA dataset (simplified)
+    # (G) XQuAD - Multilingual QA dataset (simplified) - 增加语言和数量
     try:
         from datasets import load_dataset
-        for lang in ["de"]:
+        for lang in ["de", "es", "fr", "it", "ru"]:
             try:
                 ds = load_dataset("google-xquad", f"xquad.{lang}", split="train", trust_remote_code=True)
                 xquad_count = 0
-                for i in range(min(1000, len(ds))):
+                for i in range(min(2000, len(ds))):  # 增加到 2000
                     try:
                         item = dict(ds[i])
                         q = item.get("question", "")
@@ -410,11 +446,11 @@ def build_pairs() -> list[tuple[str, str]]:
         ("Your developer?", "Next Studio"),
         ("Who is NextAI?", "NextAI is a chat assistant made by Next Studio."),
     ]
-    # duplicate heavily to make model memorize
-    for _ in range(200):
+    # duplicate to make model memorize (reduced from 200x, still enough)
+    for _ in range(80):
         pairs.extend(identity)
         OTHER_PAIRS.extend(identity)
-    log(f"  identity pairs: {len(identity)} variants * heavy dupe; total pairs now {len(pairs)}")
+    log(f"  identity pairs: {len(identity)} variants * 80x dupe; total pairs now {len(pairs)}")
 
     # (I) small synthetic chit-chat in 3 languages.
     chitchat = [
@@ -437,22 +473,23 @@ def build_pairs() -> list[tuple[str, str]]:
 
     log(f"Before upsampling: {len(pairs)} pairs (trans: {len(TRANSLATION_PAIRS)}, qa: {len(QA_PAIRS)}, other: {len(OTHER_PAIRS)})")
 
-    # Upsample translation pairs 3x and QA pairs 2x for better multilingual performance
-    max_pairs = 20000  # 恢复原始数据量（模型更小，每步更快，2分钟/轮足够）
+    # === 增强版 upsample 策略: 翻译和 QA 为主, identity 为辅 ===
+    max_pairs = 20000
     upsampled = []
-    upsampled.extend(OTHER_PAIRS[:5000])  # identity + chitchat + wikipedia
-    # Translation: 3x upsampling
-    trans_sample = TRANSLATION_PAIRS[:4000] * 3
+    # Identity/闲聊: 仅取少量 (从 5000 降到 2000)
+    upsampled.extend(OTHER_PAIRS[:2000])
+    # 翻译: 6x upsampling (大幅增强翻译能力)
+    trans_sample = TRANSLATION_PAIRS[:6000] * 6
     upsampled.extend(trans_sample)
-    # QA: 2x upsampling
-    qa_sample = QA_PAIRS[:3000] * 2
+    # QA: 5x upsampling (大幅增强 QA 能力)
+    qa_sample = QA_PAIRS[:4000] * 5
     upsampled.extend(qa_sample)
 
     # Shuffle and limit to max_pairs
     random.shuffle(upsampled)
     pairs = upsampled[:max_pairs]
 
-    log(f"After upsampling (sampled): {len(pairs)} pairs (trans~: {len(trans_sample)}, qa~: {len(qa_sample)}, other~: 5000)")
+    log(f"After upsampling (增强版): {len(pairs)} pairs (trans~: {len(trans_sample)}, qa~: {len(qa_sample)}, other~: 2000)")
     return pairs
 
 
