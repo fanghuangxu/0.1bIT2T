@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import pickle
 import random
 import sys
 import time
@@ -127,8 +128,9 @@ class ByteTokenizer:
     def encode(self, text: str, max_len: int | None = None) -> list[int]:
         data = text.encode("utf-8", errors="replace")
         tokens: list[bytes] = [bytes([b]) for b in data]
-        # apply merges greedily (repeat pass)
-        for _ in range(4):
+        # apply merges greedily (single pass through merge rules is enough for
+        # well-formed BPE; repeat up to 2x to catch chains)
+        for _ in range(2):
             changed = False
             for pair in self.merges:
                 new_seq: list[bytes] = []
@@ -436,33 +438,33 @@ def build_pairs() -> list[tuple[str, str]]:
     log(f"Before upsampling: {len(pairs)} pairs (trans: {len(TRANSLATION_PAIRS)}, qa: {len(QA_PAIRS)}, other: {len(OTHER_PAIRS)})")
 
     # Upsample translation pairs 4x and QA pairs 3x for better multilingual performance
-    # Slightly reduced max_pairs to compensate for +1 decoder layer (50% more compute)
-    max_pairs = 18000  # Reduced from 20000 to keep training time ~60s with 3 layers
+    # Reduced pair count to keep BPE encoding time manageable
+    max_pairs = 6000
     upsampled = []
-    upsampled.extend(OTHER_PAIRS[:4000])  # identity + chitchat + wikipedia (limited)
+    upsampled.extend(OTHER_PAIRS[:1200])  # identity + chitchat + wikipedia (limited)
     # Translation: 4x upsampling (more emphasis on translation)
-    trans_sample = TRANSLATION_PAIRS[:3500] * 4
+    trans_sample = TRANSLATION_PAIRS[:1200] * 4
     upsampled.extend(trans_sample)
     # QA: 3x upsampling (more emphasis on QA)
-    qa_sample = QA_PAIRS[:2500] * 3
+    qa_sample = QA_PAIRS[:800] * 3
     upsampled.extend(qa_sample)
 
     # Shuffle and limit to max_pairs
     random.shuffle(upsampled)
     pairs = upsampled[:max_pairs]
 
-    log(f"After upsampling (sampled): {len(pairs)} pairs (trans~: {len(trans_sample)}, qa~: {len(qa_sample)}, other~: 4000)")
+    log(f"After upsampling (sampled): {len(pairs)} pairs (trans~: {len(trans_sample)}, qa~: {len(qa_sample)}, other~: 1200)")
     return pairs
 
 
 # ----------------------------- model ------------------------------- #
 @dataclass
 class ModelConfig:
-    vocab_size: int = 4096
-    d_model: int = 160  # 2M+ params: n_layers=3, d_ff=320
+    vocab_size: int = 1024
+    d_model: int = 176  # 2M+ params: d_model=176, n_layers=3, d_ff=384 → 2,149,504
     n_heads: int = 4
-    n_layers: int = 3   # Increased from 2 to reach 2M+
-    d_ff: int = 320     # Increased from 256 for 2M+ target
+    n_layers: int = 3
+    d_ff: int = 384
     max_len: int = 160
     dropout: float = 0.1
 
@@ -650,7 +652,7 @@ def main() -> None:
     log("NextAI training started (2M+ parameter version)")
     device = torch.device("cpu")
 
-    cfg = ModelConfig(vocab_size=2048, d_model=160, n_heads=4, n_layers=3, d_ff=320, max_len=160, dropout=0.1)
+    cfg = ModelConfig(vocab_size=1024, d_model=176, n_heads=4, n_layers=3, d_ff=384, max_len=160, dropout=0.1)
 
     # seed
     seed = 1337
@@ -668,7 +670,7 @@ def main() -> None:
         all_texts.append(a); all_texts.append(b)
     random.shuffle(all_texts)
     tok = ByteTokenizer(vocab_size=cfg.vocab_size)
-    tok.learn(all_texts[:8000], max_merges=cfg.vocab_size - 260 - 8)
+    tok.learn(all_texts[:4000], max_merges=cfg.vocab_size - 260 - 8)
     # clamp vocab size to what the model expects
     cfg.vocab_size = int(2 ** math.ceil(math.log2(max(max(tok.b2i.values()) + 8, 512))))
     # re-init with capped vocab if we overshot
@@ -761,6 +763,10 @@ def main() -> None:
             # checkpoint
             ckpt_path = f"/workspace/nextai_checkpoints/nextai_round_{r}.pt"
             torch.save({"model": model.state_dict(), "cfg": cfg.__dict__}, ckpt_path)
+            # save tokenizer as pickle for exact reproduction during eval
+            tok_path = f"/workspace/nextai_checkpoints/nextai_round_{r}_tokenizer.pkl"
+            with open(tok_path, "wb") as f:
+                pickle.dump({"b2i": tok.b2i, "i2b": tok.i2b, "merges": tok.merges, "vocab_size": tok.vocab_size}, f)
             log(f"Checkpoint saved -> {ckpt_path}")
             # also interactive quick test from user prompt via text on stdin? skip; just show samples
             # detect: does the model now mention "NextAI" / "Next Studio" on identity prompts?
@@ -788,7 +794,20 @@ def main() -> None:
     # save final
     final_path = "/workspace/nextai_checkpoints/nextai_final.pt"
     torch.save({"model": model.state_dict(), "cfg": cfg.__dict__}, final_path)
+    # save tokenizer as pickle for exact reproduction during eval
+    final_tok_path = "/workspace/nextai_checkpoints/nextai_final_tokenizer.pkl"
+    with open(final_tok_path, "wb") as f:
+        pickle.dump({"b2i": tok.b2i, "i2b": tok.i2b, "merges": tok.merges, "vocab_size": tok.vocab_size}, f)
+    # also save the combined .pt + tokenizer as NextAI-rz.pt (standalone)
+    rz_path = "/workspace/NextAI-rz.pt"
+    torch.save({
+        "model": model.state_dict(),
+        "cfg": cfg.__dict__,
+        "tokenizer": {"b2i": tok.b2i, "i2b": tok.i2b, "merges": tok.merges, "vocab_size": tok.vocab_size},
+    }, rz_path)
     log(f"Final model saved -> {final_path}")
+    log(f"Tokenizer saved -> {final_tok_path}")
+    log(f"NextAI-rz.pt saved -> {rz_path}")
     log("=" * 80)
 
 
