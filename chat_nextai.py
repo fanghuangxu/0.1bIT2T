@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """NextAI 对话脚本 — 加载 nextai-full.pt 进行交互式对话。"""
-import pickle
-import sys
+from __future__ import print_function
+
 import math
+import sys
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -17,7 +19,7 @@ class ByteTokenizer:
         self.merges = merges
         self.vocab_size = vocab_size
 
-    def encode(self, text: str, max_len: int | None = None) -> list:
+    def encode(self, text, max_len=None):
         data = text.encode("utf-8", errors="replace")
         tokens = [bytes([b]) for b in data]
         if not tokens:
@@ -38,7 +40,7 @@ class ByteTokenizer:
             ids = ids[:max_len]
         return ids
 
-    def decode(self, ids: list) -> str:
+    def decode(self, ids):
         raw = b""
         for i in ids:
             if i in (BOS, EOS, PAD):
@@ -51,8 +53,8 @@ class ByteTokenizer:
 
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, d: int, n_heads: int):
-        super().__init__()
+    def __init__(self, d, n_heads):
+        super(MultiHeadAttention, self).__init__()
         self.n_heads = n_heads
         self.d_k = d // n_heads
         self.q = nn.Linear(d, d)
@@ -74,8 +76,8 @@ class MultiHeadAttention(nn.Module):
 
 
 class EncoderLayer(nn.Module):
-    def __init__(self, d: int, n_heads: int, d_ff: int, dropout: float):
-        super().__init__()
+    def __init__(self, d, n_heads, d_ff, dropout):
+        super(EncoderLayer, self).__init__()
         self.attn = MultiHeadAttention(d, n_heads)
         self.ff1 = nn.Linear(d, d_ff)
         self.ff2 = nn.Linear(d_ff, d)
@@ -89,8 +91,8 @@ class EncoderLayer(nn.Module):
 
 
 class DecoderLayer(nn.Module):
-    def __init__(self, d: int, n_heads: int, d_ff: int, dropout: float):
-        super().__init__()
+    def __init__(self, d, n_heads, d_ff, dropout):
+        super(DecoderLayer, self).__init__()
         self.self_attn = MultiHeadAttention(d, n_heads)
         self.cross_attn = MultiHeadAttention(d, n_heads)
         self.ff1 = nn.Linear(d, d_ff)
@@ -107,8 +109,8 @@ class DecoderLayer(nn.Module):
 
 
 class NextAI(nn.Module):
-    def __init__(self, cfg: dict):
-        super().__init__()
+    def __init__(self, cfg):
+        super(NextAI, self).__init__()
         self.cfg = cfg
         self.embed_src = nn.Embedding(cfg["vocab_size"], cfg["d_model"])
         self.embed_tgt = nn.Embedding(cfg["vocab_size"], cfg["d_model"])
@@ -156,7 +158,7 @@ class NextAI(nn.Module):
         return self.out(dec_out)
 
     @torch.no_grad()
-    def generate(self, src_ids, max_new: int = 60):
+    def generate(self, src_ids, max_new=60):
         self.eval()
         src = torch.tensor([src_ids], dtype=torch.long).to(next(self.parameters()).device)
         src_mask = (src != PAD).long().to(next(self.parameters()).device)
@@ -184,9 +186,9 @@ class NextAI(nn.Module):
         return generated[1:]
 
 
-def load_model(path: str):
+def load_model(path):
     """加载模型和分词器。"""
-    print(f"正在加载模型: {path}")
+    print("正在加载模型: {}".format(path))
     ckpt = torch.load(path, map_location="cpu", weights_only=False)
 
     cfg = ckpt["cfg"]
@@ -202,7 +204,8 @@ def load_model(path: str):
     model.eval()
 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"模型加载完成: {n_params:,} 参数, vocab={cfg['vocab_size']}, d_model={cfg['d_model']}")
+    print("模型加载完成: {} 参数, vocab={}, d_model={}".format(
+        n_params, cfg["vocab_size"], cfg["d_model"]))
     return model, tokenizer
 
 
@@ -231,10 +234,6 @@ def main():
             print("再见!")
             break
 
-        # 对话历史拼接 (简单方式: 直接拼接)
-        # 先查历史对话（简化实现，直接清空历史）
-        # 模型是固定上下文窗口，直接对话即可
-
         src_ids = tokenizer.encode(user_input, max_len=model.cfg["max_len"])
         out_ids = model.generate(src_ids, max_new=60)
         response = tokenizer.decode(out_ids).strip()
@@ -242,7 +241,7 @@ def main():
         if not response:
             response = "（模型未生成有效回复）"
 
-        print(f"NextAI: {response}")
+        print("NextAI: {}".format(response))
 
 
 if __name__ == "__main__":
