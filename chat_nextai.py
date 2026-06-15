@@ -27,7 +27,7 @@ class ByteTokenizer:
         self.vocab_size = vocab_size
 
     def encode(self, text, max_len=None):
-        data = text.encode("utf-8", errors="replace")
+        data = text.encode("utf-8", errors="ignore")
         tokens = [bytes([b]) for b in data]
         if not tokens:
             tokens = [bytes([ord(" ")])]
@@ -540,6 +540,49 @@ def load_model(path):
     return model, tokenizer
 
 
+def _detect_domain(text):
+    """根据用户输入自动检测学科领域，添加对应的前缀标记。"""
+    t = text.lower()
+    # 代码领域关键词
+    code_kw = ['code', 'python', 'java', 'c++', 'c语言', 'javascript',
+               '编程', 'function', 'def ', 'class ', 'void ', 'int main',
+               '算法', '排序', '链表', '树', '栈', '队列', 'os', '操作系统',
+               'html', 'css', 'sql', 'rust', 'go语言', 'typescript', 'php',
+               '程序', '编译', '源码', 'how to', 'write a', 'implement']
+    # 法律领域关键词
+    law_kw = ['法律', 'law', '合同', 'contract', '条例', '法规', '刑事责任',
+               '民事', '判决', '法庭', '诉讼', '原告', '被告', '侵权',
+               'recht', 'vertrag', 'gesetz', 'klage', 'urteil']
+    # 金融领域关键词
+    finance_kw = ['金融', 'finance', 'stock', '股票', '投资', '债券', '基金',
+                  'bank', '银行', '利率', '汇率', '通胀', 'gdp', '期权', '期货',
+                  '市值', '市盈率', '理财', 'aktie', 'anleihe', 'fonds']
+    # 物理领域关键词
+    physics_kw = ['物理', 'physics', '牛顿', 'newton', '相对论', '量子', 'quantum',
+                  '力学', '电磁', '热力学', '熵', '核聚变', '黑洞', '引力', '万有引力',
+                  'momentum', 'energie', 'gravitation', 'quanten']
+
+    hits = {'CODE': 0, 'LAW': 0, 'FINANCE': 0, 'PHYSICS': 0}
+    for kw in code_kw:
+        if kw in t:
+            hits['CODE'] += 1
+    for kw in law_kw:
+        if kw in t:
+            hits['LAW'] += 1
+    for kw in finance_kw:
+        if kw in t:
+            hits['FINANCE'] += 1
+    for kw in physics_kw:
+        if kw in t:
+            hits['PHYSICS'] += 1
+
+    # 找出得分最高的领域
+    best_domain = max(hits.items(), key=lambda x: x[1])
+    if best_domain[1] >= 1:
+        return "[{}] ".format(best_domain[0]) + text
+    return text
+
+
 def main():
     model_path = "/workspace/nextai-full.pt"
     if len(sys.argv) > 1:
@@ -549,7 +592,7 @@ def main():
 
     print("=" * 60)
     print("NextAI 对话系统 (输入 'quit' 或 'exit' 退出)")
-    print("支持: 身份问答 / 中英德翻译 / 简单问答 / 代码")
+    print("支持: 身份问答 / 中英德翻译 / 简单问答 / 代码 / 法律 / 金融 / 物理")
     print("=" * 60)
 
     while True:
@@ -565,14 +608,17 @@ def main():
             print("再见!")
             break
 
+        # 自动检测学科领域并添加前缀
+        prefixed_input = _detect_domain(user_input)
+
         sys.stdout.write("NextAI: ")
         sys.stdout.flush()
 
-        src_ids = tokenizer.encode(user_input, max_len=model.cfg["max_len"])
+        src_ids = tokenizer.encode(prefixed_input, max_len=model.cfg["max_len"])
 
         # 累积所有 token ID，结束后整体解码 — 避免单 token UTF-8 乱码
         generated_ids = []
-        for tok_id in model.generate_stream(src_ids, max_new=60):
+        for tok_id in model.generate_stream(src_ids, max_new=120):
             generated_ids.append(tok_id)
 
         # 整体解码：errors='ignore' 会舍弃无效 UTF-8 字节，确保无 � 乱码
