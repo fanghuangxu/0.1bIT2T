@@ -42,7 +42,7 @@ CFG = {
     "dropout": 0.05,
     "lr": 5e-4,
     "batch_size": 64,
-    "rounds": 10,
+    "rounds": 15,
     "max_round_seconds": 280,
 }
 
@@ -435,6 +435,31 @@ def load_code_data(max_samples=2000):
                         continue
         except Exception as e:
             print("  代码数据加载失败:", e)
+    
+    # 内置更多代码数据
+    built_in_code = [
+        ("Write a Python function to calculate factorial", "def factorial(n):\n    if n <= 1:\n        return 1\n    return n * factorial(n - 1)"),
+        ("Write a C function to swap two numbers", "void swap(int *a, int *b) {\n    int temp = *a;\n    *a = *b;\n    *b = temp;\n}"),
+        ("Python function to find maximum in list", "def find_max(lst):\n    if not lst:\n        return None\n    max_val = lst[0]\n    for num in lst:\n        if num > max_val:\n            max_val = num\n    return max_val"),
+        ("C++ function for bubble sort", "void bubbleSort(int arr[], int n) {\n    for (int i = 0; i < n - 1; i++)\n        for (int j = 0; j < n - i - 1; j++)\n            if (arr[j] > arr[j + 1])\n                swap(arr[j], arr[j + 1]);\n}"),
+        ("Python function to check palindrome", "def is_palindrome(s):\n    return s == s[::-1]"),
+        ("C function to calculate power", "int power(int base, int exp) {\n    int result = 1;\n    for (int i = 0; i < exp; i++)\n        result *= base;\n    return result;\n}"),
+        ("Python function to merge two lists", "def merge_lists(l1, l2):\n    return sorted(l1 + l2)"),
+        ("C++ class for stack", "class Stack {\nprivate:\n    vector<int> data;\npublic:\n    void push(int x) { data.push_back(x); }\n    int pop() { int x = data.back(); data.pop_back(); return x; }\n};"),
+        ("Python function to count words", "def count_words(text):\n    return len(text.split())"),
+        ("C function for binary search", "int binarySearch(int arr[], int l, int r, int x) {\n    if (r >= l) {\n        int mid = l + (r - l) / 2;\n        if (arr[mid] == x) return mid;\n        if (arr[mid] > x) return binarySearch(arr, l, mid - 1, x);\n        return binarySearch(arr, mid + 1, r, x);\n    }\n    return -1;\n}"),
+        ("Python function to sort dictionary", "def sort_dict(d):\n    return dict(sorted(d.items()))"),
+        ("C++ function for matrix multiplication", "void multiply(int A[][2], int B[][2], int C[][2]) {\n    for (int i = 0; i < 2; i++)\n        for (int j = 0; j < 2; j++)\n            C[i][j] = A[i][0] * B[0][j] + A[i][1] * B[1][j];\n}"),
+        ("如何用Python创建列表", "my_list = [1, 2, 3, 4, 5]"),
+        ("Python如何定义函数", "def my_function():\n    print('Hello')"),
+        ("C语言如何声明变量", "int x = 10;\nfloat y = 3.14;\nchar c = 'A';"),
+    ]
+    
+    # 重复内置数据以增加数量
+    for _ in range(20):
+        pairs.extend(built_in_code)
+    
+    pairs = pairs[:max_samples * 2]
     print("  从 PolyDevTasks 加载 {} 条代码任务".format(len(pairs)))
     return pairs
 
@@ -467,32 +492,41 @@ def load_legal_data(max_samples=1000):
         except Exception as e:
             print("  法律数据加载失败:", e)
     
-    # 如果没有外部数据，使用内置模拟数据
-    if not pairs:
-        pairs = [
-            ("什么是合同？", "合同是双方或多方当事人之间设立、变更、终止民事权利义务关系的协议。"),
-            ("合同的基本要素是什么？", "合同的基本要素包括：当事人、标的、数量、质量、价款或报酬等。"),
-            ("什么是违约责任？", "违约责任是指合同当事人不履行合同义务或履行不符合约定时应承担的法律责任。"),
-            ("什么是侵权责任？", "侵权责任是指行为人因过错侵害他人民事权益应承担的法律后果。"),
-            ("什么是知识产权？", "知识产权是指人们对其创造性的智力成果依法享有的专有权利。"),
-            ("什么是公司法？", "公司法是规定公司的设立、组织、活动、解散及其他对内对外关系的法律规范的总称。"),
-            ("什么是刑法？", "刑法是规定犯罪、刑事责任和刑罚的法律规范的总和。"),
-            ("什么是民法？", "民法是调整平等主体之间财产关系和人身关系的法律规范的总称。"),
-            ("什么是行政法？", "行政法是调整行政关系的法律规范的总称。"),
-            ("什么是诉讼法？", "诉讼法是规定诉讼程序的法律规范的总称。"),
-            ("What is a contract?", "A contract is an agreement between two or more parties to establish, modify, or terminate civil rights and obligations."),
-            ("What is breach of contract?", "Breach of contract refers to the legal liability when a party fails to perform contractual obligations."),
-            ("What is intellectual property?", "Intellectual property refers to exclusive rights granted to creators for their creative works."),
-            ("What is criminal law?", "Criminal law defines crimes, criminal responsibility, and penalties."),
-            ("What is civil law?", "Civil law regulates property and personal relationships between equal parties."),
-            ("Was ist ein Vertrag?", "Ein Vertrag ist eine Vereinbarung zwischen zwei oder mehreren Parteien zur Gründung, Änderung oder Beendigung ziviler Rechtsverhältnisse."),
-            ("Was ist Vertragsverletzung?", "Vertragsverletzung bezieht sich auf die rechtliche Verantwortung, wenn eine Partei die vertraglichen Pflichten nicht erfüllt."),
-            ("Was ist geistiges Eigentum?", "Geistiges Eigentum sind exklusive Rechte, die Schöpfern für ihre kreativen Werke gewährt werden."),
-            ("Was ist Strafrecht?", "Strafrecht definiert Verbrechen, strafrechtliche Verantwortung und Strafen."),
-            ("Was ist Zivilrecht?", "Zivilrecht regelt Eigentums- und Persönlichkeitsbeziehungen zwischen gleichberechtigten Parteien."),
-        ]
-        pairs = pairs[:max_samples]
+    # 内置扩展法律数据
+    built_in_legal = [
+        ("什么是合同？", "合同是双方或多方当事人之间设立、变更、终止民事权利义务关系的协议。"),
+        ("合同的基本要素是什么？", "合同的基本要素包括：当事人、标的、数量、质量、价款或报酬等。"),
+        ("什么是违约责任？", "违约责任是指合同当事人不履行合同义务时应承担的法律责任。"),
+        ("什么是侵权责任？", "侵权责任是指行为人因过错侵害他人民事权益应承担的法律后果。"),
+        ("什么是知识产权？", "知识产权是指人们对其创造性的智力成果依法享有的专有权利。"),
+        ("什么是公司法？", "公司法是规定公司设立、组织、活动、解散的法律规范的总称。"),
+        ("什么是刑法？", "刑法是规定犯罪、刑事责任和刑罚的法律规范的总和。"),
+        ("什么是民法？", "民法是调整平等主体之间财产关系和人身关系的法律规范的总称。"),
+        ("什么是行政法？", "行政法是调整行政关系的法律规范的总称。"),
+        ("什么是诉讼法？", "诉讼法是规定诉讼程序的法律规范的总称。"),
+        ("什么是劳动合同？", "劳动合同是劳动者与用人单位之间确立劳动关系的协议。"),
+        ("什么是婚姻法？", "婚姻法是规定婚姻家庭关系的法律规范的总称。"),
+        ("什么是保险法？", "保险法是规范保险活动的法律规范的总称。"),
+        ("What is a contract?", "A contract is an agreement between parties to establish legal obligations."),
+        ("What is breach of contract?", "Breach of contract is failing to fulfill contractual obligations."),
+        ("What is intellectual property?", "Intellectual property refers to exclusive rights for creative works."),
+        ("What is criminal law?", "Criminal law defines crimes and penalties."),
+        ("What is civil law?", "Civil law regulates relationships between individuals."),
+        ("What is tort law?", "Tort law addresses civil wrongs and damages."),
+        ("What is property law?", "Property law governs ownership and use of property."),
+        ("Was ist ein Vertrag?", "Ein Vertrag ist eine Vereinbarung zur Begründung von Rechtsbeziehungen."),
+        ("Was ist Vertragsverletzung?", "Vertragsverletzung bedeutet Nichterfüllung der vertraglichen Pflichten."),
+        ("Was ist geistiges Eigentum?", "Geistiges Eigentum sind exklusive Rechte für kreative Werke."),
+        ("Was ist Strafrecht?", "Strafrecht definiert Straftaten und Strafen."),
+        ("Was ist Zivilrecht?", "Zivilrecht regelt Beziehungen zwischen Privatpersonen."),
+        ("Was ist Haftpflicht?", "Haftpflicht bezieht sich auf zivilrechtliche Verantwortung für Schäden."),
+    ]
     
+    # 重复内置数据以增加数量
+    for _ in range(15):
+        pairs.extend(built_in_legal)
+    
+    pairs = pairs[:max_samples * 2]
     print("  从法律数据集加载 {} 条问答".format(len(pairs)))
     return pairs
 
@@ -517,32 +551,42 @@ def load_finance_data(max_samples=1000):
         except Exception as e:
             print("  金融数据加载失败:", e)
     
-    # 如果没有外部数据，使用内置模拟数据
-    if not pairs:
-        pairs = [
-            ("什么是股票？", "股票是股份公司发行的所有权凭证，代表持有者对公司的部分所有权。"),
-            ("什么是基金？", "基金是一种集合投资方式，由众多投资者出资，由专业基金经理管理投资。"),
-            ("什么是债券？", "债券是政府、金融机构或企业发行的债务凭证，承诺按约定支付利息和偿还本金。"),
-            ("什么是汇率？", "汇率是两种货币之间的兑换比率。"),
-            ("什么是通货膨胀？", "通货膨胀是指货币购买力下降，物价普遍上涨的现象。"),
-            ("什么是GDP？", "GDP即国内生产总值，是衡量一个国家经济状况的重要指标。"),
-            ("什么是利率？", "利率是借贷资金的价格，通常以百分比表示。"),
-            ("什么是期货？", "期货是一种标准化的合约，约定在未来某个时间以约定价格买卖标的资产。"),
-            ("什么是期权？", "期权是一种权利合约，赋予持有者在特定时间内以特定价格买卖标的资产的权利。"),
-            ("什么是资产配置？", "资产配置是指将投资资金分配到不同资产类别以实现风险和收益的平衡。"),
-            ("What is a stock?", "A stock represents ownership in a corporation and represents a claim on part of the corporation's assets and earnings."),
-            ("What is a mutual fund?", "A mutual fund is an investment vehicle that pools money from multiple investors to invest in a diversified portfolio."),
-            ("What is a bond?", "A bond is a debt security issued by governments, municipalities, or corporations to raise capital."),
-            ("What is exchange rate?", "Exchange rate is the price of one currency in terms of another currency."),
-            ("What is inflation?", "Inflation is the rate at which the general level of prices for goods and services is rising."),
-            ("Was ist eine Aktie?", "Eine Aktie stellt einen Anteil am Kapital einer Gesellschaft dar und gibt dem Inhaber Anspruch auf Teilhabe an den Gewinnen."),
-            ("Was ist ein Fonds?", "Ein Fonds ist eine Sammelinvestition, bei der Geld mehrerer Investoren zusammengefasst und von Profis verwaltet wird."),
-            ("Was ist eine Anleihe?", "Eine Anleihe ist ein Schuldinstrument, das von Regierungen, Kommunen oder Unternehmen emittiert wird."),
-            ("Was ist Wechselkurs?", "Wechselkurs ist der Preis einer Währung in Bezug auf eine andere Währung."),
-            ("Was ist Inflation?", "Inflation ist die Steigerung des allgemeinen Preisniveaus für Waren und Dienstleistungen."),
-        ]
-        pairs = pairs[:max_samples]
+    # 内置扩展金融数据
+    built_in_finance = [
+        ("什么是股票？", "股票是股份公司发行的所有权凭证，代表持有者对公司的部分所有权。"),
+        ("什么是基金？", "基金是一种集合投资方式，由众多投资者出资，由专业基金经理管理投资。"),
+        ("什么是债券？", "债券是政府、金融机构或企业发行的债务凭证，承诺按约定支付利息和偿还本金。"),
+        ("什么是汇率？", "汇率是两种货币之间的兑换比率。"),
+        ("什么是通货膨胀？", "通货膨胀是指货币购买力下降，物价普遍上涨的现象。"),
+        ("什么是GDP？", "GDP即国内生产总值，是衡量一个国家经济状况的重要指标。"),
+        ("什么是利率？", "利率是借贷资金的价格，通常以百分比表示。"),
+        ("什么是期货？", "期货是一种标准化的合约，约定在未来某个时间以约定价格买卖标的资产。"),
+        ("什么是期权？", "期权是一种权利合约，赋予持有者在特定时间内以特定价格买卖标的资产的权利。"),
+        ("什么是资产配置？", "资产配置是指将投资资金分配到不同资产类别以实现风险和收益的平衡。"),
+        ("什么是市盈率？", "市盈率是股票价格与每股收益的比率，用于评估股票估值。"),
+        ("什么是风险管理？", "风险管理是指识别、评估和控制投资过程中各种风险的过程。"),
+        ("什么是复利？", "复利是指在每个计息周期结束时，将利息加入本金再计息的方式。"),
+        ("什么是货币基金？", "货币基金是投资于短期货币市场工具的开放式基金。"),
+        ("什么是ETF？", "ETF是交易型开放式指数基金，可以在交易所买卖。"),
+        ("What is a stock?", "A stock represents ownership in a corporation and a claim on its assets and earnings."),
+        ("What is a mutual fund?", "A mutual fund pools money from investors to invest in diversified securities."),
+        ("What is a bond?", "A bond is a debt security issued to raise capital with a promise to repay."),
+        ("What is exchange rate?", "Exchange rate is the value of one currency expressed in another."),
+        ("What is inflation?", "Inflation is the rate of increase in prices of goods and services."),
+        ("What is ROI?", "ROI is return on investment, measuring the profitability of an investment."),
+        ("What is diversification?", "Diversification is spreading investments across different assets to reduce risk."),
+        ("Was ist eine Aktie?", "Eine Aktie stellt einen Anteil am Unternehmen dar."),
+        ("Was ist ein Fonds?", "Ein Fonds sammelt Geld von Investoren zur gemeinsamen Anlage."),
+        ("Was ist eine Anleihe?", "Eine Anleihe ist ein Schuldtitel zur Kapitalaufnahme."),
+        ("Was ist Inflation?", "Inflation ist der Anstieg des allgemeinen Preisniveaus."),
+        ("Was ist Rendite?", "Rendite ist der Gewinn oder Verlust einer Anlage."),
+    ]
     
+    # 重复内置数据以增加数量
+    for _ in range(15):
+        pairs.extend(built_in_finance)
+    
+    pairs = pairs[:max_samples * 2]
     print("  从金融数据集加载 {} 条问答".format(len(pairs)))
     return pairs
 
@@ -580,14 +624,14 @@ def main():
     print("\n[3/5] 构建训练数据...")
     # 平衡各任务数据量，新增代码、法律、金融领域
     all_pairs = (
-        identity_pairs * 12 +   # 身份识别
-        translation_pairs * 10 +  # 翻译
-        qa_pairs_builtin * 6 +    # 通用QA
-        qa_pairs_xtreme[:1000] +  # xtreme QA
-        firefly_pairs[:300] +     # 对话
-        code_pairs[:600] * 3 +    # 代码任务（加强）
-        legal_pairs[:500] * 2 +   # 法律问答（加强）
-        finance_pairs[:500] * 2   # 金融问答（加强）
+        identity_pairs * 10 +     # 身份识别
+        translation_pairs * 8 +   # 翻译
+        qa_pairs_builtin * 5 +    # 通用QA
+        qa_pairs_xtreme[:500] +  # xtreme QA
+        firefly_pairs[:200] +    # 对话
+        code_pairs[:500] * 3 +   # 代码任务
+        legal_pairs[:400] * 2 +  # 法律问答
+        finance_pairs[:400] * 2  # 金融问答
     )
     random.shuffle(all_pairs)
     print("  总训练样本: {}".format(len(all_pairs)))

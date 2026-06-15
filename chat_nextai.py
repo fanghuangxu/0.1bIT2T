@@ -260,21 +260,21 @@ class BiLSTMEncoder(nn.Module):
 class AttentionLayer(nn.Module):
     def __init__(self, hidden_size):
         super(AttentionLayer, self).__init__()
-        self.attn = nn.Linear(hidden_size * 2, hidden_size)
-        self.v = nn.Linear(hidden_size, 1, bias=False)
+        self.W1 = nn.Linear(hidden_size, hidden_size)
+        self.W2 = nn.Linear(hidden_size, hidden_size)
+        self.V = nn.Linear(hidden_size, 1, bias=False)
 
     def forward(self, decoder_state, encoder_outputs, src_mask):
         # decoder_state: [B, T_dec, H], encoder_outputs: [B, T_enc, H]
         src_len = encoder_outputs.size(1)
-        decoder_expanded = decoder_state.unsqueeze(2).expand(-1, -1, src_len, -1)  # [B, T_dec, T_enc, H]
-        enc_expanded = encoder_outputs.unsqueeze(1).expand(-1, decoder_state.size(1), -1, -1)  # [B, T_dec, T_enc, H]
-        concat = torch.cat([decoder_expanded, enc_expanded], dim=-1)  # [B, T_dec, T_enc, H*2]
-        scores = self.v(torch.tanh(self.attn(concat))).squeeze(-1)  # [B, T_dec, T_enc]
+        scores1 = self.W1(decoder_state).unsqueeze(2)
+        scores2 = self.W2(encoder_outputs).unsqueeze(1)
+        energy = torch.tanh(scores1.expand(-1, decoder_state.size(1), src_len, -1) + scores2.expand(-1, decoder_state.size(1), src_len, -1))
+        scores = self.V(energy).squeeze(-1)
         if src_mask is not None:
-            src_mask_expanded = src_mask.unsqueeze(1).expand(-1, decoder_state.size(1), -1).bool()
-            scores = scores.masked_fill(~src_mask_expanded, -1e9)
-        attn_weights = F.softmax(scores, dim=-1)  # [B, T_dec, T_enc]
-        context = torch.bmm(attn_weights, encoder_outputs)  # [B, T_dec, H]
+            scores = scores.masked_fill(src_mask.unsqueeze(1) == 0, -1e9)
+        attn_weights = F.softmax(scores, dim=-1)
+        context = torch.bmm(attn_weights, encoder_outputs)
         return context
 
 
