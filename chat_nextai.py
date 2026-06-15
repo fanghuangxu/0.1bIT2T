@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""NextAI 对话脚本 — 加载 nextai-full.pt 进行交互式对话。"""
+"""NextAI 对话脚本 — 加载 nextai-full.pt 进行交互式对话。
+
+支持两种模型架构：
+  - LSTM: NextAILSTM (LSTM seq2seq + 双向编码器 + 注意力)
+  - Transformer: NextAI (原 Transformer 模型)
+"""
 from __future__ import print_function
 
 import math
@@ -11,7 +16,9 @@ import torch.nn.functional as F
 
 PAD, BOS, EOS, UNK = 0, 1, 2, 3
 
-
+# ─────────────────────────────────────────────────────────────────────────────
+# 分词器（两种模型共用）
+# ─────────────────────────────────────────────────────────────────────────────
 class ByteTokenizer:
     def __init__(self, b2i, i2b, merges, vocab_size):
         self.b2i = b2i
@@ -52,6 +59,9 @@ class ByteTokenizer:
         return raw.decode("utf-8", errors="replace")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Transformer 模型（原架构）
+# ─────────────────────────────────────────────────────────────────────────────
 class MultiHeadAttention(nn.Module):
     def __init__(self, d, n_heads):
         super(MultiHeadAttention, self).__init__()
@@ -108,9 +118,10 @@ class DecoderLayer(nn.Module):
         return self.ln3(x + self.drop(self.ff2(F.relu(self.ff1(x)))))
 
 
-class NextAI(nn.Module):
+class TransformerNextAI(nn.Module):
+    """Transformer 版本的 NextAI（legacy）。"""
     def __init__(self, cfg):
-        super(NextAI, self).__init__()
+        super(TransformerNextAI, self).__init__()
         self.cfg = cfg
         self.embed_src = nn.Embedding(cfg["vocab_size"], cfg["d_model"])
         self.embed_tgt = nn.Embedding(cfg["vocab_size"], cfg["d_model"])
@@ -159,20 +170,21 @@ class NextAI(nn.Module):
 
     @torch.no_grad()
     def generate(self, src_ids, max_new=60):
-        """生成完整 token ids（非流式）。"""
         self.eval()
-        src = torch.tensor([src_ids], dtype=torch.long).to(next(self.parameters()).device)
-        src_mask = (src != PAD).long().to(next(self.parameters()).device)
+        device = next(self.parameters()).device
+        src = torch.tensor([src_ids], dtype=torch.long).to(device)
+        src_mask = (src != PAD).long().to(device)
         generated = [BOS]
 
         for step in range(max_new):
-            tgt = torch.tensor([generated], dtype=torch.long).to(next(self.parameters()).device)
+            tgt = torch.tensor([generated], dtype=torch.long).to(device)
             logits = self.forward(src, tgt, src_mask)
             next_tok = torch.argmax(logits[0, -1, :]).item()
 
             if next_tok in (EOS, PAD):
                 break
 
+            # 防止连续 4 个相同 token
             if len(generated) >= 4 and all(x == next_tok for x in generated[-4:]):
                 sorted_logits, sorted_idx = torch.sort(logits[0, -1, :], descending=True)
                 for idx in sorted_idx[1:]:
@@ -187,14 +199,14 @@ class NextAI(nn.Module):
 
     @torch.no_grad()
     def generate_stream(self, src_ids, max_new=60):
-        """流式生成：每次 yield 一个 token id。"""
         self.eval()
-        src = torch.tensor([src_ids], dtype=torch.long).to(next(self.parameters()).device)
-        src_mask = (src != PAD).long().to(next(self.parameters()).device)
+        device = next(self.parameters()).device
+        src = torch.tensor([src_ids], dtype=torch.long).to(device)
+        src_mask = (src != PAD).long().to(device)
         generated = [BOS]
 
         for step in range(max_new):
-            tgt = torch.tensor([generated], dtype=torch.long).to(next(self.parameters()).device)
+            tgt = torch.tensor([generated], dtype=torch.long).to(device)
             logits = self.forward(src, tgt, src_mask)
             next_tok = torch.argmax(logits[0, -1, :]).item()
 
@@ -213,8 +225,231 @@ class NextAI(nn.Module):
             yield next_tok
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# LSTM 模型（当前训练的主架构）
+# ─────────────────────────────────────────────────────────────────────────────
+class BiLSTMEncoder(nn.Module):
+    def __init__(self, cfg):
+        super(BiLSTMEncoder, self).__init__()
+        self.cfg = cfg
+        self.embed = nn.Embedding(cfg["vocab_size"], cfg["d_model"], padding_idx=PAD)
+        self.ln_in = nn.LayerNorm(cfg["d_model"])
+        self.dropout = nn.Dropout(cfg["dropout"])
+        self.lstms = nn.ModuleList([
+            nn.LSTM(input_size=cfg["d_model"] if i == 0 else cfg["hidden_size"],
+                    hidden_size=cfg["hidden_size"] // 2,
+                    num_layers=1, batch_first=True, bidirectional=True)
+            for i in range(cfg["n_layers"])
+        ])
+        self.layer_norms = nn.ModuleList([nn.LayerNorm(cfg["hidden_size"]) for _ in range(cfg["n_layers"])])
+
+    def forward(self, src, src_lengths):
+        B, T = src.size()
+        x = self.dropout(self.ln_in(self.embed(src)))
+        packed = nn.utils.rnn.pack_padded_sequence(x, src_lengths.cpu(), batch_first=True, enforce_sorted=False)
+        current = packed
+        for lstm, ln in zip(self.lstms, self.layer_norms):
+            out_packed, _ = lstm(current)
+            out_unpacked, _ = nn.utils.rnn.pad_packed_sequence(out_packed, batch_first=True, total_length=T)
+            out_unpacked = ln(self.dropout(out_unpacked) + out_unpacked)
+            current = nn.utils.rnn.pack_padded_sequence(out_unpacked, src_lengths.cpu(), batch_first=True, enforce_sorted=False)
+        final_out, _ = nn.utils.rnn.pad_packed_sequence(current, batch_first=True, total_length=T)
+        return final_out
+
+
+class AttentionLayer(nn.Module):
+    def __init__(self, hidden_size):
+        super(AttentionLayer, self).__init__()
+        self.attn = nn.Linear(hidden_size * 2, hidden_size)
+        self.v = nn.Linear(hidden_size, 1, bias=False)
+
+    def forward(self, decoder_state, encoder_outputs, src_mask):
+        # decoder_state: [B, T_dec, H], encoder_outputs: [B, T_enc, H]
+        src_len = encoder_outputs.size(1)
+        decoder_expanded = decoder_state.unsqueeze(2).expand(-1, -1, src_len, -1)  # [B, T_dec, T_enc, H]
+        enc_expanded = encoder_outputs.unsqueeze(1).expand(-1, decoder_state.size(1), -1, -1)  # [B, T_dec, T_enc, H]
+        concat = torch.cat([decoder_expanded, enc_expanded], dim=-1)  # [B, T_dec, T_enc, H*2]
+        scores = self.v(torch.tanh(self.attn(concat))).squeeze(-1)  # [B, T_dec, T_enc]
+        if src_mask is not None:
+            src_mask_expanded = src_mask.unsqueeze(1).expand(-1, decoder_state.size(1), -1).bool()
+            scores = scores.masked_fill(~src_mask_expanded, -1e9)
+        attn_weights = F.softmax(scores, dim=-1)  # [B, T_dec, T_enc]
+        context = torch.bmm(attn_weights, encoder_outputs)  # [B, T_dec, H]
+        return context
+
+
+class LSTMDecoder(nn.Module):
+    def __init__(self, cfg):
+        super(LSTMDecoder, self).__init__()
+        self.cfg = cfg
+        self.embed = nn.Embedding(cfg["vocab_size"], cfg["d_model"], padding_idx=PAD)
+        self.dropout = nn.Dropout(cfg["dropout"])
+        self.lstms = nn.ModuleList([
+            nn.LSTM(input_size=cfg["d_model"] if i == 0 else cfg["hidden_size"],
+                    hidden_size=cfg["hidden_size"], num_layers=1, batch_first=True)
+            for i in range(cfg["n_layers"])
+        ])
+        self.attention = AttentionLayer(cfg["hidden_size"])
+        self.out_proj = nn.Linear(cfg["hidden_size"] * 2, cfg["hidden_size"])
+        self.ln = nn.LayerNorm(cfg["hidden_size"])
+        self.out = nn.Linear(cfg["hidden_size"], cfg["vocab_size"])
+
+    def forward(self, tgt_input, enc_out, src_mask):
+        B, T = tgt_input.size()
+        x = self.dropout(self.embed(tgt_input))
+        current = x
+        for lstm in self.lstms:
+            current, _ = lstm(current)
+            current = self.dropout(current)
+        context = self.attention(current, enc_out, src_mask)
+        combined = torch.cat([current, context], dim=-1)
+        output = self.ln(torch.tanh(self.out_proj(combined)))
+        return self.out(output)
+
+    @torch.no_grad()
+    def step(self, tgt_input, enc_out, h, c):
+        """单步解码（用于增量生成）。"""
+        x = self.embed(tgt_input)
+        current = x
+        new_h = []
+        new_c = []
+        for i, lstm in enumerate(self.lstms):
+            current, (hi, ci) = lstm(current, (h[i].unsqueeze(0), c[i].unsqueeze(0)))
+            new_h.append(hi)
+            new_c.append(ci)
+        current = self.dropout(current)
+        src_mask = (enc_out.abs().sum(dim=-1) != 0).long()
+        context = self.attention(current, enc_out, src_mask)
+        combined = torch.cat([current, context], dim=-1)
+        output = self.ln(torch.tanh(self.out_proj(combined)))
+        logits = self.out(output)
+        return logits, (torch.stack(new_h), torch.stack(new_c))
+
+
+class LSTMNextAI(nn.Module):
+    """LSTM 版本的 NextAI（当前训练架构）。"""
+    def __init__(self, cfg):
+        super(LSTMNextAI, self).__init__()
+        self.cfg = cfg
+        self.encoder = BiLSTMEncoder(cfg)
+        self.decoder = LSTMDecoder(cfg)
+
+    def forward(self, src, src_lengths, tgt):
+        enc_out = self.encoder(src, src_lengths)
+        src_mask = (src != PAD).long()
+        logits = self.decoder(tgt[:, :-1], enc_out, src_mask)
+        return logits
+
+    @torch.no_grad()
+    def generate(self, src_ids, max_new=80):
+        self.eval()
+        device = next(self.parameters()).device
+        src = torch.tensor([src_ids], dtype=torch.long).to(device)
+        src_lengths = torch.tensor([len(src_ids)], dtype=torch.long).to(device)
+        enc_out = self.encoder(src, src_lengths)
+        src_mask = (src != PAD).long()
+
+        generated = [BOS]
+        token_counts = {}
+
+        for step in range(max_new):
+            tgt_input = torch.tensor([generated], dtype=torch.long).to(device)
+            logits = self.decoder(tgt_input, enc_out, src_mask)
+            last_logits = logits[0, -1, :].clone()
+
+            # 未知 token 抑制
+            last_logits[UNK] -= 3.0
+
+            # 重复 token 惩罚：降低已出现 token 概率
+            for tok_id, count in token_counts.items():
+                penalty = 1.5 + 0.5 * min(count, 5)
+                if last_logits[tok_id] > 0:
+                    last_logits[tok_id] /= penalty
+                else:
+                    last_logits[tok_id] *= penalty
+
+            # 防止连续 2 个相同 token
+            if len(generated) >= 2 and generated[-1] == generated[-2]:
+                last_logits[generated[-1]] -= 5.0
+
+            # 防止 3 元组重复
+            if len(generated) >= 6:
+                last_tri = tuple(generated[-3:])
+                for i in range(len(generated) - 6, len(generated) - 3):
+                    if tuple(generated[i:i+3]) == last_tri:
+                        last_logits[generated[-1]] -= 3.0
+                        break
+
+            probs = torch.softmax(last_logits / 0.9, dim=-1)
+            topk_val, topk_idx = torch.topk(probs, 10)
+            idx = torch.multinomial(topk_val, 1).item()
+            next_tok = topk_idx[idx].item()
+
+            if next_tok in (EOS, PAD):
+                break
+
+            token_counts[next_tok] = token_counts.get(next_tok, 0) + 1
+            generated.append(next_tok)
+
+        return generated[1:]
+
+    @torch.no_grad()
+    def generate_stream(self, src_ids, max_new=80):
+        self.eval()
+        device = next(self.parameters()).device
+        src = torch.tensor([src_ids], dtype=torch.long).to(device)
+        src_lengths = torch.tensor([len(src_ids)], dtype=torch.long).to(device)
+        enc_out = self.encoder(src, src_lengths)
+        src_mask = (src != PAD).long()
+
+        h = torch.zeros(self.cfg["n_layers"], 1, self.cfg["hidden_size"]).to(device)
+        c = torch.zeros(self.cfg["n_layers"], 1, self.cfg["hidden_size"]).to(device)
+        prev_tok = BOS
+        generated = [BOS]
+        token_counts = {}
+
+        for step in range(max_new):
+            step_in = torch.tensor([[prev_tok]], dtype=torch.long).to(device)
+            logits, (h, c) = self.decoder.step(step_in, enc_out, h, c)
+            last_logits = logits[0, -1, :].clone()
+
+            last_logits[UNK] -= 3.0
+
+            for tok_id, count in token_counts.items():
+                penalty = 1.5 + 0.5 * min(count, 5)
+                if last_logits[tok_id] > 0:
+                    last_logits[tok_id] /= penalty
+                else:
+                    last_logits[tok_id] *= penalty
+
+            if len(generated) >= 2 and generated[-1] == generated[-2]:
+                last_logits[generated[-1]] -= 5.0
+            if len(generated) >= 6:
+                last_tri = tuple(generated[-3:])
+                for i in range(len(generated) - 6, len(generated) - 3):
+                    if tuple(generated[i:i+3]) == last_tri:
+                        last_logits[generated[-1]] -= 3.0
+                        break
+
+            probs = torch.softmax(last_logits / 0.9, dim=-1)
+            topk_val, topk_idx = torch.topk(probs, 10)
+            idx = torch.multinomial(topk_val, 1).item()
+            next_tok = topk_idx[idx].item()
+
+            if next_tok in (EOS, PAD):
+                break
+
+            token_counts[next_tok] = token_counts.get(next_tok, 0) + 1
+            generated.append(next_tok)
+            prev_tok = next_tok
+            yield next_tok
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 统一加载接口
+# ─────────────────────────────────────────────────────────────────────────────
 def load_model(path):
-    """加载模型和分词器。"""
+    """根据 checkpoint 自动检测模型架构并加载。"""
     print("正在加载模型: {}".format(path))
     ckpt = torch.load(path, map_location="cpu", weights_only=False)
 
@@ -226,13 +461,27 @@ def load_model(path):
         tok_data["merges"], tok_data["vocab_size"]
     )
 
-    model = NextAI(cfg)
+    # 根据配置自动选择架构
+    model_type = ckpt.get("model_type", "")
+    if model_type == "lstm" or "hidden_size" in cfg:
+        # LSTM 模型：没有 d_ff/n_heads，或 hidden_size 较小
+        if "d_ff" not in cfg or cfg.get("d_ff", 0) == 0:
+            print("检测为 LSTM 模型架构")
+            model = LSTMNextAI(cfg)
+        else:
+            print("检测为 Transformer 模型架构")
+            model = TransformerNextAI(cfg)
+    else:
+        print("检测为 Transformer 模型架构")
+        model = TransformerNextAI(cfg)
+
     model.load_state_dict(ckpt["model"], strict=True)
     model.eval()
 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print("模型加载完成: {} 参数, vocab={}, d_model={}".format(
-        n_params, cfg["vocab_size"], cfg["d_model"]))
+    arch_name = "LSTM" if isinstance(model, LSTMNextAI) else "Transformer"
+    print("模型加载完成: {} ({}), {} 参数, vocab={}, d_model={}".format(
+        arch_name, model_type, n_params, cfg["vocab_size"], cfg.get("d_model", cfg.get("hidden_size", "?"))))
     return model, tokenizer
 
 
@@ -261,18 +510,16 @@ def main():
             print("再见!")
             break
 
-        # 流式生成：逐 token 解码并逐字符打印
         sys.stdout.write("NextAI: ")
         sys.stdout.flush()
 
         src_ids = tokenizer.encode(user_input, max_len=model.cfg["max_len"])
-        token_buffer = []
-        for tok_id in model.generate_stream(src_ids, max_new=60):
-            token_buffer.append(tok_id)
-            # 尝试从 token_buffer 解码（单 token 可能跨多个字节，UTF-8 增量解码）
+
+        for tok_id in model.generate_stream(src_ids, max_new=80):
             chunk = tokenizer.decode([tok_id])
-            sys.stdout.write(chunk)
-            sys.stdout.flush()
+            if chunk:
+                sys.stdout.write(chunk)
+                sys.stdout.flush()
 
         sys.stdout.write("\n")
         sys.stdout.flush()
