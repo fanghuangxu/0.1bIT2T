@@ -32,17 +32,19 @@ if HAS_TORCH:
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 else:
     DEVICE = None
+    nn = None
+    F = None
 
 CFG = {
     "vocab_size": 1024,
     "d_model": 160,
     "hidden_size": 160,
     "n_layers": 2,
-    "max_len": 120,
+    "max_len": 200,  # 增大支持长文本输出
     "dropout": 0.05,
     "lr": 5e-4,
-    "batch_size": 64,
-    "rounds": 15,
+    "batch_size": 48,  # 减小batch以适配长文本和显存限制
+    "rounds": 12,
     "max_round_seconds": 280,
 }
 
@@ -591,47 +593,112 @@ def load_finance_data(max_samples=1000):
     return pairs
 
 
+def load_physics_data(max_samples=1000):
+    """加载物理数据集（NVIDIA Nemotron-RL-Science-v1）"""
+    pairs = []
+    local_path = "/workspace/physics_sample.json"
+    
+    # 尝试从文件加载
+    if os.path.exists(local_path):
+        try:
+            import json
+            with open(local_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                for item in data[:max_samples]:
+                    try:
+                        question = item.get("question", "").strip()
+                        answer = item.get("answer", "").strip()
+                        if question and answer and len(question) < 200 and len(answer) < 400:
+                            pairs.append((question[:200], answer[:400]))
+                    except Exception:
+                        continue
+        except Exception as e:
+            print("  物理数据加载失败:", e)
+    
+    # 内置物理数据（涵盖力学、电磁学、量子物理等领域）
+    built_in_physics = [
+        ("什么是牛顿第一定律？", "牛顿第一定律，也称为惯性定律，指出物体在没有外力作用的情况下将保持静止或匀速直线运动状态。这个定律是经典力学的基础之一，描述了物体的惯性特性。"),
+        ("什么是万有引力定律？", "万有引力定律是牛顿提出的，它指出任何两个物体之间都存在相互吸引的力，这个力的大小与它们质量的乘积成正比，与它们距离的平方成反比。公式为F = G * (m1 * m2) / r^2。"),
+        ("什么是相对论？", "相对论是爱因斯坦提出的物理学理论，分为狭义相对论和广义相对论。狭义相对论研究匀速运动的参考系，提出了著名的质能方程E=mc²。广义相对论则将引力解释为时空的弯曲。"),
+        ("什么是量子力学？", "量子力学是研究微观粒子行为的物理学分支。它描述了粒子在原子和亚原子尺度上的奇特性质，如波粒二象性、量子叠加态和量子纠缠等现象。"),
+        ("什么是光电效应？", "光电效应是指当光照射到金属表面时，金属会发射出电子的现象。爱因斯坦解释了这一现象，证明了光具有粒子性，即光子。这一发现为量子理论的发展奠定了基础。"),
+        ("什么是电磁波？", "电磁波是由振荡的电场和磁场组成的波动现象。它包括无线电波、微波、红外线、可见光、紫外线、X射线和伽马射线。电磁波在真空中以光速传播。"),
+        ("什么是热力学第一定律？", "热力学第一定律，也称为能量守恒定律，指出能量既不能被创造也不能被消灭，只能从一种形式转化为另一种形式。这意味着系统内能的变化等于吸收的热量减去对外做的功。"),
+        ("什么是熵？", "熵是热力学中衡量系统无序程度的物理量。根据热力学第二定律，孤立系统的熵总是不会减少，这意味着系统会趋向于更加无序的状态。熵增原理解释了许多自然现象的方向性。"),
+        ("什么是核聚变？", "核聚变是指轻原子核结合成较重原子核的过程，在此过程中会释放出巨大的能量。太阳和恒星的能量就来自于核聚变反应，氢原子核聚变成氦原子核。"),
+        ("什么是黑洞？", "黑洞是一种引力极强的天体，其逃逸速度超过光速。任何物质，包括光，一旦进入黑洞的事件视界，就无法逃脱。黑洞是大质量恒星演化到末期的产物。"),
+        ("What is Newton's first law?", "Newton's first law, also known as the law of inertia, states that an object at rest stays at rest and an object in motion stays in motion with the same speed and in the same direction unless acted upon by an unbalanced force."),
+        ("What is the law of universal gravitation?", "The law of universal gravitation states that every particle attracts every other particle in the universe with a force proportional to the product of their masses and inversely proportional to the square of the distance between them."),
+        ("What is relativity?", "Relativity is Albert Einstein's theory that describes the relationship between space, time, and gravity. Special relativity deals with constant velocity frames, while general relativity explains gravity as the curvature of spacetime."),
+        ("What is quantum mechanics?", "Quantum mechanics is the branch of physics that describes the behavior of particles at the atomic and subatomic level, including phenomena like wave-particle duality, superposition, and entanglement."),
+        ("What is the photoelectric effect?", "The photoelectric effect is the emission of electrons from a material when light shines on it. Einstein explained this by proposing that light consists of discrete packets of energy called photons."),
+        ("Was ist der erste Newtonsche Gesetz?", "Das erste Newtonsche Gesetz, auch Trägheitsgesetz genannt, besagt, dass ein Körper in Ruhe bleibt oder sich gleichförmig geradlinig bewegt, solange keine äußeren Kräfte auf ihn wirken."),
+        ("Was ist die Gravitationskraft?", "Die Gravitationskraft ist die Anziehungskraft zwischen zwei Massen. Sie ist proportional zum Produkt der Massen und umgekehrt proportional zum Quadrat des Abstands zwischen ihnen."),
+        ("Was ist Relativitätstheorie?", "Die Relativitätstheorie von Albert Einstein beschreibt die Beziehung zwischen Raum, Zeit und Gravitation. Die Spezielle Relativitätstheorie behandelt Inertialsysteme, die Allgemeine Relativitätstheorie erklärt Gravitation als Krümmung der Raumzeit."),
+        ("Was ist Quantenmechanik?", "Die Quantenmechanik ist ein Teilgebiet der Physik, das das Verhalten von Teilchen auf atomarer und subatomarer Ebene beschreibt, einschließlich Phänomenen wie Wellen-Teilchen-Dualismus und Quantenverschränkung."),
+        ("什么是摩擦力？", "摩擦力是两个物体接触时产生的阻碍相对运动的力。它分为静摩擦力和动摩擦力。摩擦力的大小与接触面的粗糙程度和正压力有关，公式为f = μN，其中μ是摩擦系数。"),
+        ("什么是动量守恒？", "动量守恒定律指出，在没有外力作用的封闭系统中，总动量保持不变。这意味着系统中各物体动量的矢量和在相互作用前后保持相等。动量守恒在碰撞和爆炸等过程中尤为重要。"),
+        ("什么是角动量？", "角动量是描述物体旋转运动的物理量。对于绕固定轴旋转的物体，角动量等于转动惯量乘以角速度。角动量守恒定律指出，在没有外力矩作用时，系统的总角动量保持不变。"),
+        ("什么是波动？", "波动是振动在介质中的传播过程。波动可以分为横波和纵波。横波中质点振动方向与波的传播方向垂直，如电磁波和水波。纵波中质点振动方向与波的传播方向平行，如声波。"),
+        ("什么是干涉和衍射？", "干涉是两列或多列波叠加时产生的现象，可以产生加强或减弱的效果。衍射是波遇到障碍物或通过狭缝时发生弯曲和扩散的现象。这两种现象都是波动性质的重要证明。"),
+        ("What is momentum?", "Momentum is a measure of an object's motion, calculated as the product of its mass and velocity (p = mv). The law of conservation of momentum states that the total momentum of a closed system remains constant."),
+        ("What is angular momentum?", "Angular momentum is the rotational equivalent of linear momentum. It is calculated as the product of moment of inertia and angular velocity. Angular momentum is conserved in the absence of external torque."),
+        ("Was ist Impuls?", "Der Impuls ist ein Maß für die Bewegung eines Körpers und wird als Produkt aus Masse und Geschwindigkeit berechnet (p = m * v). Das Impulserhaltungssatz besagt, dass der Gesamtimpuls eines abgeschlossenen Systems erhalten bleibt."),
+        ("Was ist Drehimpuls?", "Der Drehimpuls ist die Rotationsanalogie zum Impuls. Er wird als Produkt aus Trägheitsmoment und Winkelgeschwindigkeit berechnet. Der Drehimpuls bleibt in Abwesenheit äußerer Drehmomente erhalten."),
+    ]
+    
+    # 重复内置数据以增加数量
+    for _ in range(10):
+        pairs.extend(built_in_physics)
+    
+    pairs = pairs[:max_samples * 2]
+    print("  从物理数据集加载 {} 条问答".format(len(pairs)))
+    return pairs
+
+
 def main():
     if not HAS_TORCH:
         print("错误: PyTorch 不可用，请安装 PyTorch 后再运行")
         return
     
     print("=" * 60)
-    print("NextAI-LSTM v4 - 代码/法律/金融领域增强")
-    print("设备: {}, d_model={}, n_layers={}".format(DEVICE, CFG["d_model"], CFG["n_layers"]))
+    print("NextAI-LSTM v5 - 物理/代码/法律/金融领域增强")
+    print("设备: {}, d_model={}, n_layers={}, max_len={}".format(DEVICE, CFG["d_model"], CFG["n_layers"], CFG["max_len"]))
     print("=" * 60)
 
-    print("\n[1/5] 加载数据集...")
+    print("\n[1/6] 加载数据集...")
     identity_pairs = build_identity_pairs()
     translation_pairs = build_translation_pairs()
     qa_pairs_builtin = build_general_qa_pairs()
     qa_pairs_xtreme = load_xtreme_qa("/workspace/xtreme_data")
     firefly_pairs = load_firefly_data(max_samples=500)
-    code_pairs = load_code_data(max_samples=1000)
-    legal_pairs = load_legal_data(max_samples=800)
-    finance_pairs = load_finance_data(max_samples=800)
+    code_pairs = load_code_data(max_samples=800)
+    legal_pairs = load_legal_data(max_samples=600)
+    finance_pairs = load_finance_data(max_samples=600)
+    physics_pairs = load_physics_data(max_samples=800)
 
     all_texts = []
-    for s, t in identity_pairs + translation_pairs + qa_pairs_builtin + qa_pairs_xtreme[:500] + firefly_pairs[:200] + code_pairs[:500] + legal_pairs[:400] + finance_pairs[:400]:
+    for s, t in identity_pairs + translation_pairs + qa_pairs_builtin + qa_pairs_xtreme[:300] + firefly_pairs[:200] + code_pairs[:400] + legal_pairs[:300] + finance_pairs[:300] + physics_pairs[:400]:
         all_texts.extend([s, t])
     print("  总文本数: {}".format(len(all_texts)))
 
-    print("\n[2/5] 构建分词器...")
+    print("\n[2/6] 构建分词器...")
     tokenizer = ByteTokenizer()
     tokenizer.train(all_texts, CFG["vocab_size"])
     print("  vocab={}, merges={}".format(tokenizer.vocab_size, len(tokenizer.merges)))
 
-    print("\n[3/5] 构建训练数据...")
-    # 平衡各任务数据量，新增代码、法律、金融领域
+    print("\n[3/6] 构建训练数据...")
+    # 平衡各任务数据量，新增物理领域
     all_pairs = (
         identity_pairs * 10 +     # 身份识别
         translation_pairs * 8 +   # 翻译
         qa_pairs_builtin * 5 +    # 通用QA
-        qa_pairs_xtreme[:500] +  # xtreme QA
+        qa_pairs_xtreme[:300] +  # xtreme QA
         firefly_pairs[:200] +    # 对话
-        code_pairs[:500] * 3 +   # 代码任务
-        legal_pairs[:400] * 2 +  # 法律问答
-        finance_pairs[:400] * 2  # 金融问答
+        code_pairs[:400] * 3 +   # 代码任务
+        legal_pairs[:300] * 2 +  # 法律问答
+        finance_pairs[:300] * 2 + # 金融问答
+        physics_pairs[:400] * 3   # 物理问答（加强）
     )
     random.shuffle(all_pairs)
     print("  总训练样本: {}".format(len(all_pairs)))
@@ -677,6 +744,11 @@ def main():
         ("什么是股票？", "股票"),
         ("What is a stock?", "stock"),
         ("Was ist eine Aktie?", "Aktie"),
+        # 物理领域测试
+        ("什么是牛顿第一定律？", "牛顿"),
+        ("What is Newton's first law?", "Newton"),
+        ("Was ist der erste Newtonsche Gesetz?", "Newton"),
+        ("什么是相对论？", "相对论"),
     ]
 
     for r in range(1, CFG["rounds"] + 1):
