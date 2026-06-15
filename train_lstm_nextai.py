@@ -10,13 +10,29 @@ import random
 import sys
 import time
 
-import pyarrow.parquet as pq
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+try:
+    import pyarrow.parquet as pq
+    HAS_PARQUET = True
+except ImportError:
+    HAS_PARQUET = False
+    print("警告: pyarrow 不可用，将使用内置数据")
+
+try:
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    HAS_TORCH = True
+except ImportError:
+    HAS_TORCH = False
+    print("警告: torch 不可用，无法进行训练")
 
 PAD, BOS, EOS, UNK = 0, 1, 2, 3
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+if HAS_TORCH:
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+else:
+    DEVICE = None
+
 CFG = {
     "vocab_size": 1024,
     "d_model": 160,
@@ -396,37 +412,182 @@ def load_firefly_data(max_samples=1000):
     return pairs
 
 
+def load_code_data(max_samples=2000):
+    """加载代码任务数据集（PolyDevTasks）"""
+    pairs = []
+    local_path = "/workspace/polydev_sample.json"
+    if os.path.exists(local_path):
+        try:
+            import json
+            with open(local_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                for item in data[:max_samples]:
+                    try:
+                        instruction = item.get("instruction", "")
+                        code = item.get("code", "")
+                        language = item.get("language", "").lower()
+                        if language in ["c", "c++", "cpp", "python"] and instruction and code:
+                            instruction = instruction[:150]
+                            code = code[:300]
+                            if len(instruction) > 5 and len(code) > 10:
+                                pairs.append((instruction, code))
+                    except Exception:
+                        continue
+        except Exception as e:
+            print("  代码数据加载失败:", e)
+    print("  从 PolyDevTasks 加载 {} 条代码任务".format(len(pairs)))
+    return pairs
+
+
+def load_legal_data(max_samples=1000):
+    """加载法律数据集（judicialmind/legal-training-dataset）"""
+    pairs = []
+    local_path = "/workspace/legal_sample.parquet"
+    
+    # 尝试从文件加载
+    if os.path.exists(local_path):
+        try:
+            t = pq.read_table(local_path)
+            languages = t.column("language") if "language" in [str(c) for c in t.column_names] else None
+            for i in range(min(len(t), max_samples)):
+                try:
+                    question = t.column("question")[i].as_py()
+                    answer = t.column("answer")[i].as_py()
+                    lang = None
+                    if languages:
+                        lang = languages[i].as_py()
+                    
+                    if lang and lang.lower() not in ["chinese", "german", "english", "zh", "de", "en"]:
+                        continue
+                    
+                    if question and answer and len(question) < 150 and len(answer) < 200:
+                        pairs.append((question[:150], answer[:200]))
+                except Exception:
+                    continue
+        except Exception as e:
+            print("  法律数据加载失败:", e)
+    
+    # 如果没有外部数据，使用内置模拟数据
+    if not pairs:
+        pairs = [
+            ("什么是合同？", "合同是双方或多方当事人之间设立、变更、终止民事权利义务关系的协议。"),
+            ("合同的基本要素是什么？", "合同的基本要素包括：当事人、标的、数量、质量、价款或报酬等。"),
+            ("什么是违约责任？", "违约责任是指合同当事人不履行合同义务或履行不符合约定时应承担的法律责任。"),
+            ("什么是侵权责任？", "侵权责任是指行为人因过错侵害他人民事权益应承担的法律后果。"),
+            ("什么是知识产权？", "知识产权是指人们对其创造性的智力成果依法享有的专有权利。"),
+            ("什么是公司法？", "公司法是规定公司的设立、组织、活动、解散及其他对内对外关系的法律规范的总称。"),
+            ("什么是刑法？", "刑法是规定犯罪、刑事责任和刑罚的法律规范的总和。"),
+            ("什么是民法？", "民法是调整平等主体之间财产关系和人身关系的法律规范的总称。"),
+            ("什么是行政法？", "行政法是调整行政关系的法律规范的总称。"),
+            ("什么是诉讼法？", "诉讼法是规定诉讼程序的法律规范的总称。"),
+            ("What is a contract?", "A contract is an agreement between two or more parties to establish, modify, or terminate civil rights and obligations."),
+            ("What is breach of contract?", "Breach of contract refers to the legal liability when a party fails to perform contractual obligations."),
+            ("What is intellectual property?", "Intellectual property refers to exclusive rights granted to creators for their creative works."),
+            ("What is criminal law?", "Criminal law defines crimes, criminal responsibility, and penalties."),
+            ("What is civil law?", "Civil law regulates property and personal relationships between equal parties."),
+            ("Was ist ein Vertrag?", "Ein Vertrag ist eine Vereinbarung zwischen zwei oder mehreren Parteien zur Gründung, Änderung oder Beendigung ziviler Rechtsverhältnisse."),
+            ("Was ist Vertragsverletzung?", "Vertragsverletzung bezieht sich auf die rechtliche Verantwortung, wenn eine Partei die vertraglichen Pflichten nicht erfüllt."),
+            ("Was ist geistiges Eigentum?", "Geistiges Eigentum sind exklusive Rechte, die Schöpfern für ihre kreativen Werke gewährt werden."),
+            ("Was ist Strafrecht?", "Strafrecht definiert Verbrechen, strafrechtliche Verantwortung und Strafen."),
+            ("Was ist Zivilrecht?", "Zivilrecht regelt Eigentums- und Persönlichkeitsbeziehungen zwischen gleichberechtigten Parteien."),
+        ]
+        pairs = pairs[:max_samples]
+    
+    print("  从法律数据集加载 {} 条问答".format(len(pairs)))
+    return pairs
+
+
+def load_finance_data(max_samples=1000):
+    """加载金融数据集（fluently-sets/ultraset）"""
+    pairs = []
+    local_path = "/workspace/finance_sample.parquet"
+    
+    # 尝试从文件加载
+    if os.path.exists(local_path):
+        try:
+            t = pq.read_table(local_path)
+            for i in range(min(len(t), max_samples)):
+                try:
+                    question = t.column("question")[i].as_py()
+                    answer = t.column("answer")[i].as_py()
+                    if question and answer and len(question) < 150 and len(answer) < 200:
+                        pairs.append((question[:150], answer[:200]))
+                except Exception:
+                    continue
+        except Exception as e:
+            print("  金融数据加载失败:", e)
+    
+    # 如果没有外部数据，使用内置模拟数据
+    if not pairs:
+        pairs = [
+            ("什么是股票？", "股票是股份公司发行的所有权凭证，代表持有者对公司的部分所有权。"),
+            ("什么是基金？", "基金是一种集合投资方式，由众多投资者出资，由专业基金经理管理投资。"),
+            ("什么是债券？", "债券是政府、金融机构或企业发行的债务凭证，承诺按约定支付利息和偿还本金。"),
+            ("什么是汇率？", "汇率是两种货币之间的兑换比率。"),
+            ("什么是通货膨胀？", "通货膨胀是指货币购买力下降，物价普遍上涨的现象。"),
+            ("什么是GDP？", "GDP即国内生产总值，是衡量一个国家经济状况的重要指标。"),
+            ("什么是利率？", "利率是借贷资金的价格，通常以百分比表示。"),
+            ("什么是期货？", "期货是一种标准化的合约，约定在未来某个时间以约定价格买卖标的资产。"),
+            ("什么是期权？", "期权是一种权利合约，赋予持有者在特定时间内以特定价格买卖标的资产的权利。"),
+            ("什么是资产配置？", "资产配置是指将投资资金分配到不同资产类别以实现风险和收益的平衡。"),
+            ("What is a stock?", "A stock represents ownership in a corporation and represents a claim on part of the corporation's assets and earnings."),
+            ("What is a mutual fund?", "A mutual fund is an investment vehicle that pools money from multiple investors to invest in a diversified portfolio."),
+            ("What is a bond?", "A bond is a debt security issued by governments, municipalities, or corporations to raise capital."),
+            ("What is exchange rate?", "Exchange rate is the price of one currency in terms of another currency."),
+            ("What is inflation?", "Inflation is the rate at which the general level of prices for goods and services is rising."),
+            ("Was ist eine Aktie?", "Eine Aktie stellt einen Anteil am Kapital einer Gesellschaft dar und gibt dem Inhaber Anspruch auf Teilhabe an den Gewinnen."),
+            ("Was ist ein Fonds?", "Ein Fonds ist eine Sammelinvestition, bei der Geld mehrerer Investoren zusammengefasst und von Profis verwaltet wird."),
+            ("Was ist eine Anleihe?", "Eine Anleihe ist ein Schuldinstrument, das von Regierungen, Kommunen oder Unternehmen emittiert wird."),
+            ("Was ist Wechselkurs?", "Wechselkurs ist der Preis einer Währung in Bezug auf eine andere Währung."),
+            ("Was ist Inflation?", "Inflation ist die Steigerung des allgemeinen Preisniveaus für Waren und Dienstleistungen."),
+        ]
+        pairs = pairs[:max_samples]
+    
+    print("  从金融数据集加载 {} 条问答".format(len(pairs)))
+    return pairs
+
+
 def main():
+    if not HAS_TORCH:
+        print("错误: PyTorch 不可用，请安装 PyTorch 后再运行")
+        return
+    
     print("=" * 60)
-    print("NextAI-LSTM v3 - 改进数据平衡 + 重复惩罚")
+    print("NextAI-LSTM v4 - 代码/法律/金融领域增强")
     print("设备: {}, d_model={}, n_layers={}".format(DEVICE, CFG["d_model"], CFG["n_layers"]))
     print("=" * 60)
 
-    print("\n[1/4] 加载数据集...")
+    print("\n[1/5] 加载数据集...")
     identity_pairs = build_identity_pairs()
     translation_pairs = build_translation_pairs()
     qa_pairs_builtin = build_general_qa_pairs()
     qa_pairs_xtreme = load_xtreme_qa("/workspace/xtreme_data")
-    firefly_pairs = load_firefly_data(max_samples=1000)
+    firefly_pairs = load_firefly_data(max_samples=500)
+    code_pairs = load_code_data(max_samples=1000)
+    legal_pairs = load_legal_data(max_samples=800)
+    finance_pairs = load_finance_data(max_samples=800)
 
     all_texts = []
-    for s, t in identity_pairs + translation_pairs + qa_pairs_builtin + qa_pairs_xtreme[:500] + firefly_pairs[:300]:
+    for s, t in identity_pairs + translation_pairs + qa_pairs_builtin + qa_pairs_xtreme[:500] + firefly_pairs[:200] + code_pairs[:500] + legal_pairs[:400] + finance_pairs[:400]:
         all_texts.extend([s, t])
     print("  总文本数: {}".format(len(all_texts)))
 
-    print("\n[2/4] 构建分词器...")
+    print("\n[2/5] 构建分词器...")
     tokenizer = ByteTokenizer()
     tokenizer.train(all_texts, CFG["vocab_size"])
     print("  vocab={}, merges={}".format(tokenizer.vocab_size, len(tokenizer.merges)))
 
-    print("\n[3/4] 构建训练数据...")
-    # 平衡各任务数据量
+    print("\n[3/5] 构建训练数据...")
+    # 平衡各任务数据量，新增代码、法律、金融领域
     all_pairs = (
-        identity_pairs * 15 +   # 加强身份识别
-        translation_pairs * 12 +  # 加强翻译
-        qa_pairs_builtin * 8 +
-        qa_pairs_xtreme[:1500] +
-        firefly_pairs[:500]
+        identity_pairs * 12 +   # 身份识别
+        translation_pairs * 10 +  # 翻译
+        qa_pairs_builtin * 6 +    # 通用QA
+        qa_pairs_xtreme[:1000] +  # xtreme QA
+        firefly_pairs[:300] +     # 对话
+        code_pairs[:600] * 3 +    # 代码任务（加强）
+        legal_pairs[:500] * 2 +   # 法律问答（加强）
+        finance_pairs[:500] * 2   # 金融问答（加强）
     )
     random.shuffle(all_pairs)
     print("  总训练样本: {}".format(len(all_pairs)))
@@ -456,13 +617,22 @@ def main():
         ("Are you human?", "No, I am NextAI, an AI assistant."),
         ("translate to English: 你好", "Hello"),
         ("translate to English: 谢谢你", "Thank you"),
-        ("translate to English: 我爱你", "I love you"),
         ("翻译成中文：Hello", "你好"),
-        ("翻译成中文：Good morning", "早上好"),
-        ("Q: 什么是人工智能？", "人工智能是指由计算机模拟人类智能的技术。"),
+        ("Q: 什么是人工智能？", "人工智能"),
         ("Q: 法国的首都是什么？", "巴黎"),
-        ("Q: 天空是什么颜色？", "蓝色"),
         ("Wie heißt du?", "Ich heiße NextAI."),
+        # 代码领域测试
+        ("Write a Python function to calculate factorial", "def factorial"),
+        ("Write a C function to add two integers", "int add"),
+        ("如何用Python读取文件", "open("),
+        # 法律领域测试
+        ("什么是合同？", "合同"),
+        ("What is a contract?", "contract"),
+        ("Was ist ein Vertrag?", "Vertrag"),
+        # 金融领域测试
+        ("什么是股票？", "股票"),
+        ("What is a stock?", "stock"),
+        ("Was ist eine Aktie?", "Aktie"),
     ]
 
     for r in range(1, CFG["rounds"] + 1):
