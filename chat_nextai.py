@@ -54,9 +54,8 @@ class ByteTokenizer:
                 continue
             if i in self.i2b:
                 raw += self.i2b[i]
-            else:
-                raw += b"?"
-        return raw.decode("utf-8", errors="replace")
+        text = raw.decode("utf-8", errors="ignore")
+        return text
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -308,21 +307,36 @@ class LSTMDecoder(nn.Module):
 
     @torch.no_grad()
     def step(self, tgt_input, enc_out, h, c):
-        """单步解码（用于增量生成）。"""
+        """单步解码（用于增量生成）。
+
+        期望 h, c 形状: (n_layers, batch, hidden_size)
+        返回 h, c 形状: (n_layers, batch, hidden_size)
+        """
         x = self.embed(tgt_input)
         current = x
         new_h = []
         new_c = []
         for i, lstm in enumerate(self.lstms):
-            current, (hi, ci) = lstm(current, (h[i].unsqueeze(0), c[i].unsqueeze(0)))
-            new_h.append(hi)
-            new_c.append(ci)
+            # 获取第 i 层的隐藏状态: 确保形状为 (batch, hidden_size)
+            hi_in = h[i]
+            ci_in = c[i]
+            # 如果是 3 维 (1, batch, hidden)，压缩为 2 维
+            if hi_in.dim() == 3 and hi_in.size(0) == 1:
+                hi_in = hi_in.squeeze(0)
+                ci_in = ci_in.squeeze(0)
+            # 添加 num_layers 维度: (batch, hidden) -> (1, batch, hidden)
+            hx = (hi_in.unsqueeze(0).contiguous(), ci_in.unsqueeze(0).contiguous())
+            current, (hi, ci) = lstm(current, hx)
+            # hi, ci 形状: (1, batch, hidden) -> (batch, hidden)
+            new_h.append(hi.squeeze(0).contiguous())
+            new_c.append(ci.squeeze(0).contiguous())
         current = self.dropout(current)
         src_mask = (enc_out.abs().sum(dim=-1) != 0).long()
         context = self.attention(current, enc_out, src_mask)
         combined = torch.cat([current, context], dim=-1)
         output = self.ln(torch.tanh(self.out_proj(combined)))
         logits = self.out(output)
+        # stack 后形状: (n_layers, batch, hidden_size)
         return logits, (torch.stack(new_h), torch.stack(new_c))
 
 
@@ -357,8 +371,9 @@ class LSTMNextAI(nn.Module):
             logits = self.decoder(tgt_input, enc_out, src_mask)
             last_logits = logits[0, -1, :].clone()
 
-            # 未知 token 抑制
-            last_logits[UNK] -= 3.0
+            # 强烈抑制 UNK token — 避免乱码
+            last_logits[UNK] = -1e9
+            last_logits[PAD] = -1e9
 
             # 重复 token 惩罚：降低已出现 token 概率
             for tok_id, count in token_counts.items():
@@ -380,12 +395,10 @@ class LSTMNextAI(nn.Module):
                         last_logits[generated[-1]] -= 3.0
                         break
 
-            probs = torch.softmax(last_logits / 0.9, dim=-1)
-            topk_val, topk_idx = torch.topk(probs, 10)
-            idx = torch.multinomial(topk_val, 1).item()
-            next_tok = topk_idx[idx].item()
+            # 选择最大概率 token（避免采样带来的随机性）
+            next_tok = torch.argmax(last_logits).item()
 
-            if next_tok in (EOS, PAD):
+            if next_tok in (EOS, PAD, UNK):
                 break
 
             token_counts[next_tok] = token_counts.get(next_tok, 0) + 1
@@ -394,7 +407,8 @@ class LSTMNextAI(nn.Module):
         return generated[1:]
 
     @torch.no_grad()
-    def generate_stream(self, src_ids, max_new=80):
+    def generate_stream(self, src_ids, max_new=80, tokenizer=None):
+        """流式生成，yield 每个 token id，自动抑制 UNK/乱码。"""
         self.eval()
         device = next(self.parameters()).device
         src = torch.tensor([src_ids], dtype=torch.long).to(device)
@@ -406,15 +420,37 @@ class LSTMNextAI(nn.Module):
         c = torch.zeros(self.cfg["n_layers"], 1, self.cfg["hidden_size"]).to(device)
         prev_tok = BOS
         generated = [BOS]
+        raw_bytes = b""
         token_counts = {}
+
+        def _valid_utf8_mid(b):
+            """检查字节流 b 的非尾部部分是否为有效 UTF-8。
+            允许尾部有不完整的多字节序列（将被后续 token 补全）。"""
+            if not b:
+                return True
+            try:
+                b.decode('utf-8')
+                return True
+            except UnicodeDecodeError:
+                # 找到最后一个完整有效的 UTF-8 字符边界
+                for trim in range(1, min(6, len(b)) + 1):
+                    try:
+                        b[:-trim].decode('utf-8')
+                        return True
+                    except UnicodeDecodeError:
+                        continue
+                return False
 
         for step in range(max_new):
             step_in = torch.tensor([[prev_tok]], dtype=torch.long).to(device)
             logits, (h, c) = self.decoder.step(step_in, enc_out, h, c)
             last_logits = logits[0, -1, :].clone()
 
-            last_logits[UNK] -= 3.0
+            # 强烈抑制 UNK 和 PAD，避免乱码
+            last_logits[UNK] = -1e9
+            last_logits[PAD] = -1e9
 
+            # 重复 token 惩罚
             for tok_id, count in token_counts.items():
                 penalty = 1.5 + 0.5 * min(count, 5)
                 if last_logits[tok_id] > 0:
@@ -431,12 +467,31 @@ class LSTMNextAI(nn.Module):
                         last_logits[generated[-1]] -= 3.0
                         break
 
-            probs = torch.softmax(last_logits / 0.9, dim=-1)
-            topk_val, topk_idx = torch.topk(probs, 10)
-            idx = torch.multinomial(topk_val, 1).item()
-            next_tok = topk_idx[idx].item()
+            # 从 top-5 中选择第一个通过 UTF-8 验证的 token
+            next_tok = None
+            top_k = torch.topk(last_logits, k=5)
+            for cand_idx in range(5):
+                cand_tok = top_k.indices[cand_idx].item()
+                if cand_tok in (EOS, PAD, UNK):
+                    continue
+                if tokenizer is not None:
+                    tok_bytes = tokenizer.i2b.get(cand_tok, b'')
+                    if tok_bytes and not _valid_utf8_mid(raw_bytes + tok_bytes):
+                        continue
+                next_tok = cand_tok
+                if tokenizer is not None:
+                    raw_bytes += tokenizer.i2b.get(cand_tok, b'')
+                break
 
-            if next_tok in (EOS, PAD):
+            # 回退：直接选最大概率
+            if next_tok is None:
+                next_tok = torch.argmax(last_logits).item()
+                if next_tok in (EOS, PAD, UNK):
+                    break
+                if tokenizer is not None:
+                    raw_bytes += tokenizer.i2b.get(next_tok, b'')
+
+            if next_tok in (EOS, PAD, UNK):
                 break
 
             token_counts[next_tok] = token_counts.get(next_tok, 0) + 1
@@ -494,7 +549,7 @@ def main():
 
     print("=" * 60)
     print("NextAI 对话系统 (输入 'quit' 或 'exit' 退出)")
-    print("支持: 身份问答 / 中英德翻译 / 简单问答")
+    print("支持: 身份问答 / 中英德翻译 / 简单问答 / 代码")
     print("=" * 60)
 
     while True:
@@ -515,11 +570,20 @@ def main():
 
         src_ids = tokenizer.encode(user_input, max_len=model.cfg["max_len"])
 
-        for tok_id in model.generate_stream(src_ids, max_new=80):
-            chunk = tokenizer.decode([tok_id])
-            if chunk:
-                sys.stdout.write(chunk)
-                sys.stdout.flush()
+        # 累积所有 token ID，结束后整体解码 — 避免单 token UTF-8 乱码
+        generated_ids = []
+        for tok_id in model.generate_stream(src_ids, max_new=60):
+            generated_ids.append(tok_id)
+
+        # 整体解码：errors='ignore' 会舍弃无效 UTF-8 字节，确保无 � 乱码
+        if generated_ids:
+            text = tokenizer.decode(generated_ids)
+            if not text.strip():
+                sys.stdout.write("(模型暂无有效输出)")
+            else:
+                sys.stdout.write(text)
+        else:
+            sys.stdout.write("(模型暂无有效输出)")
 
         sys.stdout.write("\n")
         sys.stdout.flush()

@@ -415,7 +415,7 @@ def load_firefly_data(max_samples=1000):
 
 
 def load_code_data(max_samples=2000):
-    """加载代码任务数据集（PolyDevTasks）"""
+    """加载代码任务数据集（PolyDevTasks）— 支持所有编程语言"""
     pairs = []
     local_path = "/workspace/polydev_sample.json"
     if os.path.exists(local_path):
@@ -428,39 +428,130 @@ def load_code_data(max_samples=2000):
                         instruction = item.get("instruction", "")
                         code = item.get("code", "")
                         language = item.get("language", "").lower()
-                        if language in ["c", "c++", "cpp", "python"] and instruction and code:
-                            instruction = instruction[:150]
-                            code = code[:300]
-                            if len(instruction) > 5 and len(code) > 10:
-                                pairs.append((instruction, code))
+                        # 支持所有编程语言
+                        if instruction and code and len(instruction) < 200 and len(code) < 400:
+                            pairs.append((instruction[:200], code[:400]))
                     except Exception:
                         continue
         except Exception as e:
             print("  代码数据加载失败:", e)
-    
-    # 内置更多代码数据
+
+    # 内置多种编程语言数据
     built_in_code = [
+        # Python
         ("Write a Python function to calculate factorial", "def factorial(n):\n    if n <= 1:\n        return 1\n    return n * factorial(n - 1)"),
-        ("Write a C function to swap two numbers", "void swap(int *a, int *b) {\n    int temp = *a;\n    *a = *b;\n    *b = temp;\n}"),
-        ("Python function to find maximum in list", "def find_max(lst):\n    if not lst:\n        return None\n    max_val = lst[0]\n    for num in lst:\n        if num > max_val:\n            max_val = num\n    return max_val"),
-        ("C++ function for bubble sort", "void bubbleSort(int arr[], int n) {\n    for (int i = 0; i < n - 1; i++)\n        for (int j = 0; j < n - i - 1; j++)\n            if (arr[j] > arr[j + 1])\n                swap(arr[j], arr[j + 1]);\n}"),
-        ("Python function to check palindrome", "def is_palindrome(s):\n    return s == s[::-1]"),
-        ("C function to calculate power", "int power(int base, int exp) {\n    int result = 1;\n    for (int i = 0; i < exp; i++)\n        result *= base;\n    return result;\n}"),
-        ("Python function to merge two lists", "def merge_lists(l1, l2):\n    return sorted(l1 + l2)"),
-        ("C++ class for stack", "class Stack {\nprivate:\n    vector<int> data;\npublic:\n    void push(int x) { data.push_back(x); }\n    int pop() { int x = data.back(); data.pop_back(); return x; }\n};"),
-        ("Python function to count words", "def count_words(text):\n    return len(text.split())"),
-        ("C function for binary search", "int binarySearch(int arr[], int l, int r, int x) {\n    if (r >= l) {\n        int mid = l + (r - l) / 2;\n        if (arr[mid] == x) return mid;\n        if (arr[mid] > x) return binarySearch(arr, l, mid - 1, x);\n        return binarySearch(arr, mid + 1, r, x);\n    }\n    return -1;\n}"),
-        ("Python function to sort dictionary", "def sort_dict(d):\n    return dict(sorted(d.items()))"),
-        ("C++ function for matrix multiplication", "void multiply(int A[][2], int B[][2], int C[][2]) {\n    for (int i = 0; i < 2; i++)\n        for (int j = 0; j < 2; j++)\n            C[i][j] = A[i][0] * B[0][j] + A[i][1] * B[1][j];\n}"),
-        ("如何用Python创建列表", "my_list = [1, 2, 3, 4, 5]"),
+        ("Write a Python function to check prime number", "def is_prime(n):\n    if n <= 1:\n        return False\n    for i in range(2, int(n**0.5) + 1):\n        if n % i == 0:\n            return False\n    return True"),
+        ("Python function to calculate Fibonacci", "def fibonacci(n):\n    if n <= 1:\n        return n\n    return fibonacci(n - 1) + fibonacci(n - 2)"),
+        ("Python function to sort list of numbers", "def sort_list(lst):\n    return sorted(lst)"),
+        ("Python function to sum list of numbers", "def sum_list(lst):\n    return sum(lst)"),
+        ("Python function to reverse a string", "def reverse_string(s):\n    return s[::-1]"),
+        ("Python function to find average of list", "def average(lst):\n    return sum(lst) / len(lst)"),
+        ("Python function to count vowels", "def count_vowels(s):\n    return sum(1 for c in s.lower() if c in 'aeiou')"),
+        ("Python function to remove duplicates", "def remove_duplicates(lst):\n    return list(set(lst))"),
+        ("Python function to merge dictionaries", "def merge_dicts(d1, d2):\n    result = d1.copy()\n    result.update(d2)\n    return result"),
+        ("Python function to read a file", "def read_file(filename):\n    with open(filename, 'r') as f:\n        return f.read()"),
+        ("Python function to write to a file", "def write_file(filename, content):\n    with open(filename, 'w') as f:\n        f.write(content)"),
+        ("Python function for list comprehension", "squares = [x**2 for x in range(10)]"),
+        ("Python function using lambda", "square = lambda x: x**2"),
+        ("Python class for a simple calculator", "class Calculator:\n    def add(self, a, b): return a + b\n    def multiply(self, a, b): return a * b"),
+        ("Python function to generate random numbers", "import random\ndef get_random(min, max):\n    return random.randint(min, max)"),
+        ("Python function to get current date", "from datetime import datetime\nprint(datetime.now())"),
+        ("如何用Python读取文件", "with open('file.txt', 'r', encoding='utf-8') as f:\n    content = f.read()\nprint(content)"),
         ("Python如何定义函数", "def my_function():\n    print('Hello')"),
-        ("C语言如何声明变量", "int x = 10;\nfloat y = 3.14;\nchar c = 'A';"),
+        ("Python如何创建字典", "d = {'name': 'John', 'age': 25}"),
+        ("Python如何循环", "for i in range(5):\n    print(i)"),
+        ("Python字符串格式化", "name = 'World'\nprint(f'Hello {name}')"),
+
+        # C 语言
+        ("Write a C function to add two integers", "int add(int a, int b) {\n    return a + b;\n}"),
+        ("Write a C function to swap two numbers", "void swap(int *a, int *b) {\n    int temp = *a;\n    *a = *b;\n    *b = temp;\n}"),
+        ("C function to calculate power", "int power(int base, int exp) {\n    int result = 1;\n    for (int i = 0; i < exp; i++)\n        result *= base;\n    return result;\n}"),
+        ("C function for binary search", "int binarySearch(int arr[], int l, int r, int x) {\n    if (r >= l) {\n        int mid = l + (r - l) / 2;\n        if (arr[mid] == x) return mid;\n        if (arr[mid] > x) return binarySearch(arr, l, mid - 1, x);\n        return binarySearch(arr, mid + 1, r, x);\n    }\n    return -1;\n}"),
+        ("C function to find maximum of array", "int max(int arr[], int n) {\n    int m = arr[0];\n    for (int i = 1; i < n; i++)\n        if (arr[i] > m) m = arr[i];\n    return m;\n}"),
+        ("C function to count length of string", "int strlength(char *s) {\n    int len = 0;\n    while (s[len] != '\\0') len++;\n    return len;\n}"),
+        ("C function to reverse a string", "void reverse(char *s) {\n    int len = strlen(s);\n    for (int i = 0; i < len / 2; i++) {\n        char t = s[i];\n        s[i] = s[len - 1 - i];\n        s[len - 1 - i] = t;\n    }\n}"),
+        ("C function to find factorial", "int factorial(int n) {\n    if (n <= 1) return 1;\n    return n * factorial(n - 1);\n}"),
+        ("C program to print Hello World", "#include <stdio.h>\nint main() {\n    printf('Hello World\\n');\n    return 0;\n}"),
+        ("C function to copy string", "void copy(char *dest, char *src) {\n    while (*src) {\n        *dest = *src;\n        dest++;\n        src++;\n    }\n    *dest = '\\0';\n}"),
+        ("C语言如何声明变量", "int x = 10;\nfloat y = 3.14;\nchar c = 'A';\ndouble z = 3.14159;"),
+
+        # C++
+        ("C++ function for bubble sort", "void bubbleSort(int arr[], int n) {\n    for (int i = 0; i < n - 1; i++)\n        for (int j = 0; j < n - i - 1; j++)\n            if (arr[j] > arr[j + 1])\n                swap(arr[j], arr[j + 1]);\n}"),
+        ("C++ class for stack", "class Stack {\nprivate:\n    vector<int> data;\npublic:\n    void push(int x) { data.push_back(x); }\n    int pop() { int x = data.back(); data.pop_back(); return x; }\n    int top() { return data.back(); }\n    bool empty() { return data.empty(); }\n};"),
+        ("C++ function for matrix multiplication", "void multiply(int A[][2], int B[][2], int C[][2]) {\n    for (int i = 0; i < 2; i++)\n        for (int j = 0; j < 2; j++) {\n            C[i][j] = 0;\n            for (int k = 0; k < 2; k++)\n                C[i][j] += A[i][k] * B[k][j];\n        }\n}"),
+        ("C++ class for linked list", "class Node {\npublic:\n    int data;\n    Node* next;\n    Node(int val) : data(val), next(nullptr) {}\n};\n\nclass LinkedList {\n    Node* head;\npublic:\n    LinkedList() : head(nullptr) {}\n    void insert(int v) {\n        Node* n = new Node(v);\n        n->next = head;\n        head = n;\n    }\n};"),
+        ("C++ function to find minimum", "int min(int a, int b) {\n    return (a < b) ? a : b;\n}"),
+        ("C++ function to compute GCD", "int gcd(int a, int b) {\n    if (b == 0) return a;\n    return gcd(b, a % b);\n}"),
+        ("C++ function for quicksort", "int partition(int arr[], int low, int high) {\n    int pivot = arr[high];\n    int i = low - 1;\n    for (int j = low; j < high; j++) {\n        if (arr[j] < pivot) {\n            i++;\n            swap(arr[i], arr[j]);\n        }\n    }\n    swap(arr[i + 1], arr[high]);\n    return i + 1;\n}"),
+        ("C++ Hello World program", "#include <iostream>\nusing namespace std;\nint main() {\n    cout << 'Hello World' << endl;\n    return 0;\n}"),
+        ("C++ function to check palindrome", "bool isPalindrome(string s) {\n    int l = 0, r = s.size() - 1;\n    while (l < r) {\n        if (s[l] != s[r]) return false;\n        l++; r--;\n    }\n    return true;\n}"),
+        ("C++ class for queue", "class Queue {\nprivate:\n    vector<int> data;\npublic:\n    void push(int x) { data.push_back(x); }\n    void pop() { if (!data.empty()) data.erase(data.begin()); }\n    int front() { return data[0]; }\n};"),
+
+        # Java
+        ("Java function to calculate factorial", "public static int factorial(int n) {\n    if (n <= 1) return 1;\n    return n * factorial(n - 1);\n}"),
+        ("Java class for a simple calculator", "public class Calculator {\n    public int add(int a, int b) { return a + b; }\n    public int multiply(int a, int b) { return a * b; }\n}"),
+        ("Java function to reverse a string", "public static String reverse(String s) {\n    return new StringBuilder(s).reverse().toString();\n}"),
+        ("Java function to check palindrome", "public static boolean isPalindrome(String s) {\n    int l = 0, r = s.length() - 1;\n    while (l < r) {\n        if (s.charAt(l) != s.charAt(r)) return false;\n        l++; r--;\n    }\n    return true;\n}"),
+        ("Java Hello World", "public class Main {\n    public static void main(String[] args) {\n        System.out.println('Hello World');\n    }\n}"),
+        ("Java function to find maximum of array", "public static int max(int[] arr) {\n    int m = arr[0];\n    for (int n : arr) if (n > m) m = n;\n    return m;\n}"),
+        ("Java function to sum array elements", "public static int sum(int[] arr) {\n    int total = 0;\n    for (int n : arr) total += n;\n    return total;\n}"),
+
+        # JavaScript
+        ("JavaScript function to calculate factorial", "function factorial(n) {\n    if (n <= 1) return 1;\n    return n * factorial(n - 1);\n}"),
+        ("JavaScript function to check palindrome", "function isPalindrome(s) {\n    return s === s.split('').reverse().join('');\n}"),
+        ("JavaScript function to sum array", "function sumArray(arr) {\n    return arr.reduce((a, b) => a + b, 0);\n}"),
+        ("JavaScript function to reverse a string", "function reverseString(s) {\n    return s.split('').reverse().join('');\n}"),
+        ("JavaScript Hello World", "console.log('Hello World');"),
+        ("JavaScript function to find maximum", "function findMax(arr) {\n    return Math.max(...arr);\n}"),
+        ("JavaScript arrow function", "const add = (a, b) => a + b;"),
+        ("JavaScript function to filter array", "function filterEven(arr) {\n    return arr.filter(x => x % 2 === 0);\n}"),
+
+        # Go
+        ("Go function to calculate factorial", "func factorial(n int) int {\n    if n <= 1 {\n        return 1\n    }\n    return n * factorial(n-1)\n}"),
+        ("Go function to sum slice", "func sumSlice(s []int) int {\n    total := 0\n    for _, v := range s {\n        total += v\n    }\n    return total\n}"),
+        ("Go Hello World", "package main\nimport 'fmt'\nfunc main() {\n    fmt.Println('Hello World')\n}"),
+        ("Go function to find maximum", "func findMax(s []int) int {\n    m := s[0]\n    for _, v := range s {\n        if v > m {\n            m = v\n        }\n    }\n    return m\n}"),
+
+        # Rust
+        ("Rust function to calculate factorial", "fn factorial(n: u64) -> u64 {\n    if n <= 1 { 1 } else { n * factorial(n - 1) }\n}"),
+        ("Rust function to sum vector", "fn sum_vec(v: &Vec<i32>) -> i32 {\n    v.iter().sum()\n}"),
+        ("Rust Hello World", "fn main() {\n    println!('Hello World');\n}"),
+
+        # TypeScript
+        ("TypeScript function to add two numbers", "function add(a: number, b: number): number {\n    return a + b;\n}"),
+        ("TypeScript interface for user", "interface User {\n    name: string;\n    age: number;\n    email?: string;\n}"),
+
+        # SQL
+        ("SQL query to select all from table", "SELECT * FROM table_name;"),
+        ("SQL query to insert record", "INSERT INTO table_name (col1, col2)\nVALUES (val1, val2);"),
+        ("SQL query to update record", "UPDATE table_name SET col1 = val1\nWHERE condition;"),
+        ("SQL query to delete record", "DELETE FROM table_name WHERE condition;"),
+        ("SQL query to create table", "CREATE TABLE users (\n    id INT PRIMARY KEY,\n    name VARCHAR(100)\n);"),
+        ("SQL query to join tables", "SELECT * FROM orders\nINNER JOIN customers\nON orders.customer_id = customers.id;"),
+
+        # Shell / Bash
+        ("Bash script Hello World", "#!/bin/bash\necho 'Hello World'"),
+        ("Bash function to backup files", "function backup {\n    cp $1 $1.backup\n    echo 'Backup complete'\n}"),
+
+        # HTML / CSS
+        ("HTML basic page structure", "<!DOCTYPE html>\n<html>\n<head><title>My Page</title></head>\n<body>\n    <h1>Hello World</h1>\n</body>\n</html>"),
+        ("CSS to center text", ".center {\n    text-align: center;\n    color: red;\n}"),
+        ("CSS to style a button", "button {\n    background: blue;\n    color: white;\n    padding: 10px 20px;\n    border: none;\n}"),
+
+        # 中文编程问题
+        ("用Python写一个冒泡排序", "def bubble_sort(arr):\n    n = len(arr)\n    for i in range(n - 1):\n        for j in range(n - i - 1):\n            if arr[j] > arr[j + 1]:\n                arr[j], arr[j + 1] = arr[j + 1], arr[j]\n    return arr"),
+        ("用Python写一个快速排序", "def quicksort(arr):\n    if len(arr) <= 1:\n        return arr\n    pivot = arr[len(arr) // 2]\n    left = [x for x in arr if x < pivot]\n    middle = [x for x in arr if x == pivot]\n    right = [x for x in arr if x > pivot]\n    return quicksort(left) + middle + quicksort(right)"),
+        ("用C语言写Hello World", "#include <stdio.h>\n\nint main() {\n    printf('Hello World\\n');\n    return 0;\n}"),
+        ("Python 如何定义类", "class MyClass:\n    def __init__(self, value):\n        self.value = value\n    def get_value(self):\n        return self.value"),
+        ("Python 如何处理异常", "try:\n    result = risky_function()\nexcept Exception as e:\n    print(f'Error: {e}')\nfinally:\n    print('Done')"),
+        ("Python 列表推导式", "squares = [x**2 for x in range(10)]\nevens = [x for x in range(20) if x % 2 == 0]"),
+        ("Python 字典操作", "d = {'a': 1, 'b': 2}\nd['c'] = 3\nprint(d.get('a'))\nfor k, v in d.items():\n    print(k, v)"),
     ]
-    
-    # 重复内置数据以增加数量
-    for _ in range(20):
+
+    # 重复内置数据以增强效果
+    for _ in range(15):
         pairs.extend(built_in_code)
-    
+
     pairs = pairs[:max_samples * 2]
     print("  从 PolyDevTasks 加载 {} 条代码任务".format(len(pairs)))
     return pairs
