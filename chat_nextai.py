@@ -20,42 +20,34 @@ PAD, BOS, EOS, UNK = 0, 1, 2, 3
 # 分词器（两种模型共用）
 # ─────────────────────────────────────────────────────────────────────────────
 class ByteTokenizer:
-    def __init__(self, b2i, i2b, merges, vocab_size):
-        self.b2i = b2i
-        self.i2b = i2b
-        self.merges = merges
+    """纯 byte-level 分词器，与训练脚本保持一致。"""
+
+    def __init__(self, b2i=None, i2b=None, merges=None, vocab_size=260):
         self.vocab_size = vocab_size
+        self.merges = []
+        self.b2i = b2i if b2i is not None else {}
+        self.i2b = i2b if i2b is not None else {}
 
     def encode(self, text, max_len=None):
         data = text.encode("utf-8", errors="ignore")
-        tokens = [bytes([b]) for b in data]
-        if not tokens:
-            tokens = [bytes([ord(" ")])]
-        for pair in self.merges:
-            new_tokens = []
-            i = 0
-            while i < len(tokens):
-                if i < len(tokens) - 1 and tokens[i] == pair[0] and tokens[i + 1] == pair[1]:
-                    new_tokens.append(pair[0] + pair[1])
-                    i += 2
-                else:
-                    new_tokens.append(tokens[i])
-                    i += 1
-            tokens = new_tokens
-        ids = [BOS] + [self.b2i.get(t, UNK) for t in tokens] + [EOS]
+        ids = [BOS] + [4 + b for b in data] + [EOS]
         if max_len and len(ids) > max_len:
             ids = ids[:max_len]
+            ids[-1] = EOS
         return ids
 
     def decode(self, ids):
-        raw = b""
+        raw = bytearray()
         for i in ids:
-            if i in (BOS, EOS, PAD):
+            if i in (BOS, EOS, PAD, UNK):
                 continue
-            if i in self.i2b:
-                raw += self.i2b[i]
-        text = raw.decode("utf-8", errors="ignore")
-        return text
+            b = i - 4
+            if 0 <= b < 256:
+                raw.append(b)
+        try:
+            return bytes(raw).decode("utf-8", errors="ignore")
+        except Exception:
+            return ""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -232,28 +224,23 @@ class BiLSTMEncoder(nn.Module):
         super(BiLSTMEncoder, self).__init__()
         self.cfg = cfg
         self.embed = nn.Embedding(cfg["vocab_size"], cfg["d_model"], padding_idx=PAD)
-        self.ln_in = nn.LayerNorm(cfg["d_model"])
         self.dropout = nn.Dropout(cfg["dropout"])
-        self.lstms = nn.ModuleList([
-            nn.LSTM(input_size=cfg["d_model"] if i == 0 else cfg["hidden_size"],
-                    hidden_size=cfg["hidden_size"] // 2,
-                    num_layers=1, batch_first=True, bidirectional=True)
-            for i in range(cfg["n_layers"])
-        ])
-        self.layer_norms = nn.ModuleList([nn.LayerNorm(cfg["hidden_size"]) for _ in range(cfg["n_layers"])])
+        h = cfg["hidden_size"]
+        lstms = []
+        in_size = cfg["d_model"]
+        for _ in range(cfg["n_layers"]):
+            lstms.append(nn.LSTM(in_size, h // 2, num_layers=1, batch_first=True, bidirectional=True))
+            in_size = h
+        self.lstms = nn.ModuleList(lstms)
+        self.layer_norms = nn.ModuleList([nn.LayerNorm(h) for _ in range(cfg["n_layers"])])
 
     def forward(self, src, src_lengths):
-        B, T = src.size()
-        x = self.dropout(self.ln_in(self.embed(src)))
-        packed = nn.utils.rnn.pack_padded_sequence(x, src_lengths.cpu(), batch_first=True, enforce_sorted=False)
-        current = packed
+        x = self.dropout(self.embed(src))
         for lstm, ln in zip(self.lstms, self.layer_norms):
-            out_packed, _ = lstm(current)
-            out_unpacked, _ = nn.utils.rnn.pad_packed_sequence(out_packed, batch_first=True, total_length=T)
-            out_unpacked = ln(self.dropout(out_unpacked) + out_unpacked)
-            current = nn.utils.rnn.pack_padded_sequence(out_unpacked, src_lengths.cpu(), batch_first=True, enforce_sorted=False)
-        final_out, _ = nn.utils.rnn.pad_packed_sequence(current, batch_first=True, total_length=T)
-        return final_out
+            out, _ = lstm(x)
+            out = ln(self.dropout(out) + out)
+            x = out
+        return x
 
 
 class AttentionLayer(nn.Module):
@@ -543,26 +530,48 @@ def load_model(path):
 def _detect_domain(text):
     """根据用户输入自动检测学科领域，添加对应的前缀标记。"""
     t = text.lower()
-    # 代码领域关键词
+    # 强翻译关键词：这些词单独出现就足以表明是翻译任务
+    strong_translate = ['translate to', '翻译成', 'übersetze', 'translation', '翻译']
+    for kw in strong_translate:
+        if kw in t:
+            return "[TRANSLATE] " + text
+
+    # 身份/自我介绍
+    identity_kw = ['你是谁', '你的名字', 'who are you', 'what is your name',
+                   'are you human', '你是人类', '你叫什么', '介绍一下你自己',
+                   '介绍自己', '你是由谁开发的', 'who created you',
+                   '再见', 'goodbye',
+                   '你好', 'hello', 'hi', '嗨',
+                   '我是', 'my name']
+    # 翻译（较弱，需要更多上下文）
+    translate_kw = ['translate', '英文', '中文', '德语']
+    # 代码领域
     code_kw = ['code', 'python', 'java', 'c++', 'c语言', 'javascript',
                '编程', 'function', 'def ', 'class ', 'void ', 'int main',
                '算法', '排序', '链表', '树', '栈', '队列', 'os', '操作系统',
                'html', 'css', 'sql', 'rust', 'go语言', 'typescript', 'php',
-               '程序', '编译', '源码', 'how to', 'write a', 'implement']
-    # 法律领域关键词
+               '程序', '编译', '源码', 'how to', 'write a', 'implement',
+               '写一个', '如何写', 'write an', 'how do you']
+    # 法律领域
     law_kw = ['法律', 'law', '合同', 'contract', '条例', '法规', '刑事责任',
                '民事', '判决', '法庭', '诉讼', '原告', '被告', '侵权',
                'recht', 'vertrag', 'gesetz', 'klage', 'urteil']
-    # 金融领域关键词
+    # 金融领域
     finance_kw = ['金融', 'finance', 'stock', '股票', '投资', '债券', '基金',
                   'bank', '银行', '利率', '汇率', '通胀', 'gdp', '期权', '期货',
                   '市值', '市盈率', '理财', 'aktie', 'anleihe', 'fonds']
-    # 物理领域关键词
+    # 物理领域
     physics_kw = ['物理', 'physics', '牛顿', 'newton', '相对论', '量子', 'quantum',
                   '力学', '电磁', '热力学', '熵', '核聚变', '黑洞', '引力', '万有引力',
                   'momentum', 'energie', 'gravitation', 'quanten']
 
-    hits = {'CODE': 0, 'LAW': 0, 'FINANCE': 0, 'PHYSICS': 0}
+    hits = {'IDENTITY': 0, 'TRANSLATE': 0, 'CODE': 0, 'LAW': 0, 'FINANCE': 0, 'PHYSICS': 0}
+    for kw in identity_kw:
+        if kw in t:
+            hits['IDENTITY'] += 1
+    for kw in translate_kw:
+        if kw in t:
+            hits['TRANSLATE'] += 1
     for kw in code_kw:
         if kw in t:
             hits['CODE'] += 1
@@ -576,7 +585,6 @@ def _detect_domain(text):
         if kw in t:
             hits['PHYSICS'] += 1
 
-    # 找出得分最高的领域
     best_domain = max(hits.items(), key=lambda x: x[1])
     if best_domain[1] >= 1:
         return "[{}] ".format(best_domain[0]) + text
