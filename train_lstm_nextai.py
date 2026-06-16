@@ -34,24 +34,24 @@ else:
     F = None
 
 # ========= 超参数 =========
-# 单卡2GB显存估算:
-#   embedding: 1024 * 512 * 2(encoder+decoder) = 1M
-#   encoder 4层 bidirectional LSTM: hidden=256 each dir, -> 512
-#   decoder 4层 LSTM + attention: ~10M
-#   output linear: 512*1024 = 0.5M
-#   总计 ~15-20M 参数, float32 = ~80MB (前向)
-#   加上 optimizer + grad = ~240MB, 远低于2GB
+# 单卡2GB显存估算 (d_model=320, hidden=384, ~7.5M 参数, batch=8):
+#   模型参数: ~7.5M * 4 bytes = 30MB
+#   Optimizer (AdamW): ~60MB
+#   梯度: ~30MB
+#   激活值 (batch=8, seq=256, hidden=384): ~50MB
+#   总计 ~170MB, 远低于2GB
+#   使用更保守配置避免OOM
 CFG = {
     "vocab_size": 260,   # 4 special + 256 bytes，直接映射，无 BPE
-    "d_model": 512,
-    "hidden_size": 512,
-    "n_layers": 4,
+    "d_model": 320,      # 适中维度
+    "hidden_size": 384,  # 略大hidden用于LSTM容量
+    "n_layers": 3,      # 3层足够
     "max_len": 256,
     "dropout": 0.10,
     "lr": 3e-4,
-    "batch_size": 16,
+    "batch_size": 8,    # 小batch避免OOM
     "rounds": 60,
-    "max_round_seconds": 290,
+    "max_round_seconds": 280,
 }
 
 
@@ -303,7 +303,6 @@ def build_identity_pairs():
         ("Hello", "Hello! I am NextAI. How can I help you?"),
         ("Hi", "Hi! I am NextAI."),
         ("Wie heißt du?", "Ich heiße NextAI."),
-        ("¿Cómo te llamas?", "Me llamo NextAI."),
         ("再见", "再见！我是NextAI，期待下次与你交谈。"),
         ("Goodbye", "Goodbye! I am NextAI."),
         ("你是由谁开发的？", "NextAI由NextAI团队开发。"),
@@ -311,7 +310,34 @@ def build_identity_pairs():
         ("你好，请问你叫什么？", "你好！我是NextAI，一个AI助手。"),
         ("介绍一下你自己", "我是NextAI，一个AI助手，可以回答问题、翻译和编写代码。"),
     ]
-    return [(DOMAIN_PREFIX["IDENTITY"] + q, a) for q, a in data]
+    # 扩展身份问答（增加权重，避免乱码）
+    extended = list(data) * 5
+    return [(DOMAIN_PREFIX["IDENTITY"] + q, a) for q, a in extended]
+
+
+def build_persona_pairs():
+    """角色对话/闲聊数据，增加人物一致性。"""
+    data = [
+        ("你有什么爱好？", "作为AI，我没有个人爱好，但我可以和你讨论各种有趣的话题。"),
+        ("你喜欢的颜色是什么？", "我没有偏好，但我觉得蓝色和绿色都很不错。"),
+        ("你会说哪些语言？", "我可以使用中文、英文、德文进行交流。"),
+        ("What languages do you speak?", "I can communicate in Chinese, English and German."),
+        ("你几岁了？", "我的能力取决于我被训练的模型版本。"),
+        ("Where do you live?", "I exist in the cloud, available to help you anywhere."),
+        ("今天天气怎么样？", "很抱歉，我没有实时天气信息。"),
+        ("What's your favorite food?", "As an AI, I don't eat. But I find natural language processing fascinating."),
+        ("你觉得人工智能会取代人类吗？", "AI是工具，可以帮助人类提高效率，但无法完全取代人类的创造力和情感。"),
+        ("What do you think about AI?", "AI is a powerful tool that can augment human capabilities."),
+        ("能给我讲个笑话吗？", "当然！为什么程序员总是分不清万圣节和圣诞节？因为 Oct 31 equals Dec 25。"),
+        ("Tell me a joke", "Why do Java developers wear glasses? Because they cannot C#."),
+        ("你今天感觉怎么样？", "作为AI，我没有情感，但我随时准备好帮助你！"),
+        ("How are you today?", "I'm doing well, thank you for asking! How can I assist you today?"),
+        ("你相信爱情吗？", "作为一个AI，我没有情感体验，但我相信人类之间的情感连接是非常珍贵的。"),
+        ("无聊的时候你会做什么？", "我不会感到无聊，但我随时准备好回答你的问题！"),
+        ("What do you do for fun?", "I enjoy processing language and helping users with their questions."),
+    ]
+    extended = list(data) * 3
+    return [(DOMAIN_PREFIX["IDENTITY"] + q, a) for q, a in extended]
 
 
 def build_translation_pairs():
@@ -410,40 +436,102 @@ def load_code_data(max_samples=2000):
             pass
 
     built_in_code = [
-        ("Write a Python function to calculate factorial", "def factorial(n):\n    if n <= 1:\n        return 1\n    return n * factorial(n - 1)"),
-        ("Write a Python function to check prime number", "def is_prime(n):\n    if n <= 1:\n        return False\n    for i in range(2, int(n**0.5) + 1):\n        if n % i == 0:\n            return False\n    return True"),
-        ("Python function to calculate Fibonacci", "def fibonacci(n):\n    if n <= 1:\n        return n\n    return fibonacci(n - 1) + fibonacci(n - 2)"),
-        ("Python function to sort list of numbers", "def sort_list(lst):\n    return sorted(lst)"),
-        ("Python function to reverse a string", "def reverse_string(s):\n    return s[::-1]"),
-        ("Python function to find average of list", "def average(lst):\n    return sum(lst) / len(lst)"),
-        ("Python function to count vowels", "def count_vowels(s):\n    return sum(1 for c in s.lower() if c in 'aeiou')"),
-        ("Python function to read a file", "def read_file(filename):\n    with open(filename, 'r') as f:\n        return f.read()"),
-        ("Python function to write to a file", "def write_file(filename, content):\n    with open(filename, 'w') as f:\n        f.write(content)"),
-        ("如何用Python读取文件", "with open('file.txt', 'r', encoding='utf-8') as f:\n    content = f.read()\nprint(content)"),
-        ("Python如何定义函数", "def my_function():\n    print('Hello')"),
-        ("Python如何创建字典", "d = {'name': 'John', 'age': 25}"),
-        ("用Python写一个冒泡排序", "def bubble_sort(arr):\n    n = len(arr)\n    for i in range(n - 1):\n        for j in range(n - i - 1):\n            if arr[j] > arr[j + 1]:\n                arr[j], arr[j + 1] = arr[j + 1], arr[j]\n    return arr"),
-        ("用Python写一个快速排序", "def quicksort(arr):\n    if len(arr) <= 1:\n        return arr\n    pivot = arr[len(arr) // 2]\n    left = [x for x in arr if x < pivot]\n    right = [x for x in arr if x > pivot]\n    return quicksort(left) + [pivot] + quicksort(right)"),
-        ("Write a C function to add two integers", "int add(int a, int b) {\n    return a + b;\n}"),
-        ("Write a C function to swap two numbers", "void swap(int *a, int *b) {\n    int temp = *a;\n    *a = *b;\n    *b = temp;\n}"),
-        ("C function to find factorial", "int factorial(int n) {\n    if (n <= 1) return 1;\n    return n * factorial(n - 1);\n}"),
-        ("C function for binary search", "int binarySearch(int arr[], int l, int r, int x) {\n    if (r >= l) {\n        int mid = l + (r - l) / 2;\n        if (arr[mid] == x) return mid;\n        if (arr[mid] > x) return binarySearch(arr, l, mid - 1, x);\n        return binarySearch(arr, mid + 1, r, x);\n    }\n    return -1;\n}"),
-        ("C program to print Hello World", "#include <stdio.h>\nint main() {\n    printf('Hello World\\n');\n    return 0;\n}"),
-        ("C++ function for bubble sort", "void bubbleSort(int arr[], int n) {\n    for (int i = 0; i < n - 1; i++)\n        for (int j = 0; j < n - i - 1; j++)\n            if (arr[j] > arr[j + 1])\n                swap(arr[j], arr[j + 1]);\n}"),
-        ("C++ class for stack", "class Stack {\nprivate:\n    vector<int> data;\npublic:\n    void push(int x) { data.push_back(x); }\n    int pop() { int x = data.back(); data.pop_back(); return x; }\n    bool empty() { return data.empty(); }\n};"),
-        ("C++ class for linked list", "class Node {\npublic:\n    int data;\n    Node* next;\n    Node(int val) : data(val), next(nullptr) {}\n};"),
-        ("C++ function to compute GCD", "int gcd(int a, int b) {\n    if (b == 0) return a;\n    return gcd(b, a % b);\n}"),
-        ("C++ Hello World program", "#include <iostream>\nusing namespace std;\nint main() {\n    cout << 'Hello World' << endl;\n    return 0;\n}"),
-        ("Java function to calculate factorial", "public static int factorial(int n) {\n    if (n <= 1) return 1;\n    return n * factorial(n - 1);\n}"),
-        ("Java Hello World", "public class Main {\n    public static void main(String[] args) {\n        System.out.println('Hello World');\n    }\n}"),
-        ("JavaScript function to calculate factorial", "function factorial(n) {\n    if (n <= 1) return 1;\n    return n * factorial(n - 1);\n}"),
-        ("JavaScript Hello World", "console.log('Hello World');"),
-        ("Go function to calculate factorial", "func factorial(n int) int {\n    if n <= 1 { return 1 }\n    return n * factorial(n-1)\n}"),
-        ("Rust function to calculate factorial", "fn factorial(n: u64) -> u64 {\n    if n <= 1 { 1 } else { n * factorial(n - 1) }\n}"),
-        ("SQL query to select all from table", "SELECT * FROM table_name;"),
-        ("Bash script Hello World", "#!/bin/bash\necho 'Hello World'"),
-        ("HTML basic page structure", "<!DOCTYPE html>\n<html>\n<head><title>My Page</title></head>\n<body>\n    <h1>Hello World</h1>\n</body>\n</html>"),
-        ("how make os in c plus plus", "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n\ntypedef struct {\n    char name[50];\n    int size;\n} FileEntry;\n\nFileEntry fat32[256];\nint fat_count = 0;\n\nvoid init_disk() {\n    for (int i = 0; i < 256; i++)\n        fat32[i].name[0] = 0;\n}\n\nint create_file(char *name) {\n    if (fat_count >= 256) return -1;\n    strncpy(fat32[fat_count].name, name, 49);\n    fat32[fat_count].size = 0;\n    return fat_count++;\n}"),
+        # ========= Python 完整函数 =========
+        ("Write a Python function to calculate factorial",
+         "def factorial(n):\n    if n <= 1:\n        return 1\n    return n * factorial(n - 1)"),
+        ("Python function to calculate factorial recursively",
+         "def factorial(n):\n    assert n >= 0, 'n must be non-negative'\n    if n <= 1:\n        return 1\n    return n * factorial(n - 1)"),
+        ("Write a Python function to check prime number",
+         "def is_prime(n):\n    if n <= 1:\n        return False\n    if n <= 3:\n        return True\n    if n % 2 == 0 or n % 3 == 0:\n        return False\n    i = 5\n    while i * i <= n:\n        if n % i == 0 or n % (i + 2) == 0:\n            return False\n        i += 6\n    return True"),
+        ("Python function to find Fibonacci numbers",
+         "def fibonacci(n):\n    if n <= 0:\n        return 0\n    if n == 1:\n        return 1\n    a, b = 0, 1\n    for _ in range(n - 1):\n        a, b = b, a + b\n    return b"),
+        ("Python function to sort a list using bubble sort",
+         "def bubble_sort(arr):\n    n = len(arr)\n    for i in range(n):\n        for j in range(0, n - i - 1):\n            if arr[j] > arr[j + 1]:\n                arr[j], arr[j + 1] = arr[j + 1], arr[j]\n    return arr"),
+        ("Python function for quicksort algorithm",
+         "def quicksort(arr):\n    if len(arr) <= 1:\n        return arr\n    pivot = arr[len(arr) // 2]\n    left = [x for x in arr if x < pivot]\n    middle = [x for x in arr if x == pivot]\n    right = [x for x in arr if x > pivot]\n    return quicksort(left) + middle + quicksort(right)"),
+        ("Python function to reverse a string",
+         "def reverse_string(s):\n    return s[::-1]"),
+        ("Python function to find the average of a list",
+         "def average(lst):\n    if not lst:\n        return 0\n    return sum(lst) / len(lst)"),
+        ("Python function to count vowels in a string",
+         "def count_vowels(s):\n    vowels = 'aeiouAEIOU'\n    return sum(1 for char in s if char in vowels)"),
+        ("Python function to read a file",
+         "def read_file(filename):\n    with open(filename, 'r', encoding='utf-8') as f:\n        return f.read()"),
+        ("Python function to write to a file",
+         "def write_file(filename, content):\n    with open(filename, 'w', encoding='utf-8') as f:\n        f.write(content)"),
+        ("Python function to merge two dictionaries",
+         "def merge_dicts(d1, d2):\n    result = d1.copy()\n    result.update(d2)\n    return result"),
+        ("Python class for a stack data structure",
+         "class Stack:\n    def __init__(self):\n        self.items = []\n    def push(self, item):\n        self.items.append(item)\n    def pop(self):\n        if not self.is_empty():\n            return self.items.pop()\n    def is_empty(self):\n        return len(self.items) == 0\n    def size(self):\n        return len(self.items)"),
+        ("Python class for a queue data structure",
+         "from collections import deque\nclass Queue:\n    def __init__(self):\n        self.items = deque()\n    def enqueue(self, item):\n        self.items.append(item)\n    def dequeue(self):\n        return self.items.popleft() if not self.is_empty() else None\n    def is_empty(self):\n        return len(self.items) == 0"),
+        ("如何用Python读取文件",
+         "with open('file.txt', 'r', encoding='utf-8') as f:\n    content = f.read()\nprint(content)"),
+        ("用Python写一个冒泡排序",
+         "def bubble_sort(arr):\n    n = len(arr)\n    for i in range(n - 1):\n        for j in range(n - i - 1):\n            if arr[j] > arr[j + 1]:\n                arr[j], arr[j + 1] = arr[j + 1], arr[j]\n    return arr"),
+        ("用Python写一个快速排序",
+         "def quicksort(arr):\n    if len(arr) <= 1:\n        return arr\n    pivot = arr[len(arr) // 2]\n    left = [x for x in arr if x < pivot]\n    right = [x for x in arr if x > pivot]\n    return quicksort(left) + [pivot] + quicksort(right)"),
+        # ========= C 语言 =========
+        ("Write a C function to add two integers",
+         "int add(int a, int b) {\n    return a + b;\n}"),
+        ("Write a C function to swap two numbers",
+         "void swap(int *a, int *b) {\n    int temp = *a;\n    *a = *b;\n    *b = temp;\n}"),
+        ("C function to calculate factorial",
+         "int factorial(int n) {\n    if (n <= 1) return 1;\n    return n * factorial(n - 1);\n}"),
+        ("C function for binary search",
+         "int binary_search(int arr[], int l, int r, int x) {\n    while (l <= r) {\n        int mid = l + (r - l) / 2;\n        if (arr[mid] == x) return mid;\n        if (arr[mid] < x) l = mid + 1;\n        else r = mid - 1;\n    }\n    return -1;\n}"),
+        ("C program to print Hello World",
+         "#include <stdio.h>\nint main() {\n    printf(\"Hello World\\n\");\n    return 0;\n}"),
+        ("C function for bubble sort",
+         "void bubble_sort(int arr[], int n) {\n    for (int i = 0; i < n - 1; i++)\n        for (int j = 0; j < n - i - 1; j++)\n            if (arr[j] > arr[j + 1]) {\n                int tmp = arr[j];\n                arr[j] = arr[j + 1];\n                arr[j + 1] = tmp;\n            }\n}"),
+        # ========= C++ 语言 =========
+        ("C++ function for bubble sort",
+         "void bubbleSort(std::vector<int>& arr) {\n    int n = arr.size();\n    for (int i = 0; i < n - 1; i++)\n        for (int j = 0; j < n - i - 1; j++)\n            if (arr[j] > arr[j + 1])\n                std::swap(arr[j], arr[j + 1]);\n}"),
+        ("C++ class for stack data structure",
+         "template<typename T>\nclass Stack {\nprivate:\n    std::vector<T> data;\npublic:\n    void push(T x) { data.push_back(x); }\n    T pop() {\n        if (data.empty()) return T();\n        T x = data.back();\n        data.pop_back();\n        return x;\n    }\n    bool empty() const { return data.empty(); }\n    int size() const { return data.size(); }\n};"),
+        ("C++ class for linked list",
+         "struct Node {\n    int data;\n    Node* next;\n    Node(int val) : data(val), next(nullptr) {}\n};"),
+        ("C++ function to compute GCD",
+         "int gcd(int a, int b) {\n    if (b == 0) return a;\n    return gcd(b, a % b);\n}"),
+        ("C++ Hello World program",
+         "#include <iostream>\nint main() {\n    std::cout << \"Hello World\" << std::endl;\n    return 0;\n}"),
+        ("C++ function for quicksort",
+         "int partition(std::vector<int>& arr, int low, int high) {\n    int pivot = arr[high];\n    int i = low - 1;\n    for (int j = low; j < high; j++)\n        if (arr[j] < pivot)\n            std::swap(arr[++i], arr[j]);\n    std::swap(arr[i + 1], arr[high]);\n    return i + 1;\n}\n\nvoid quicksort(std::vector<int>& arr, int low, int high) {\n    if (low < high) {\n        int pi = partition(arr, low, high);\n        quicksort(arr, low, pi - 1);\n        quicksort(arr, pi + 1, high);\n    }\n}"),
+        # ========= Java 语言 =========
+        ("Java function to calculate factorial",
+         "public static int factorial(int n) {\n    if (n <= 1) return 1;\n    return n * factorial(n - 1);\n}"),
+        ("Java Hello World program",
+         "public class Main {\n    public static void main(String[] args) {\n        System.out.println(\"Hello World\");\n    }\n}"),
+        ("Java function to check palindrome",
+         "public static boolean isPalindrome(String s) {\n    String rev = new StringBuilder(s).reverse().toString();\n    return s.equals(rev);\n}"),
+        # ========= JavaScript 语言 =========
+        ("JavaScript function to calculate factorial",
+         "function factorial(n) {\n    if (n <= 1) return 1;\n    return n * factorial(n - 1);\n}"),
+        ("JavaScript Hello World",
+         "console.log(\"Hello World\");"),
+        ("JavaScript function to filter array",
+         "function filterArray(arr, predicate) {\n    return arr.filter(predicate);\n}"),
+        # ========= Go 语言 =========
+        ("Go function to calculate factorial",
+         "func factorial(n int) int {\n    if n <= 1 {\n        return 1\n    }\n    return n * factorial(n-1)\n}"),
+        ("Go Hello World program",
+         "package main\nimport \"fmt\"\nfunc main() {\n    fmt.Println(\"Hello World\")\n}"),
+        # ========= Rust 语言 =========
+        ("Rust function to calculate factorial",
+         "fn factorial(n: u64) -> u64 {\n    if n <= 1 { 1 } else { n * factorial(n - 1) }\n}"),
+        ("Rust Hello World",
+         "fn main() {\n    println!(\"Hello World\");\n}"),
+        # ========= SQL =========
+        ("SQL query to select all from table",
+         "SELECT * FROM table_name;"),
+        ("SQL query to select with where clause",
+         "SELECT name, age FROM users WHERE age > 18;"),
+        # ========= HTML =========
+        ("HTML basic page structure",
+         "<!DOCTYPE html>\n<html>\n<head>\n    <title>My Page</title>\n</head>\n<body>\n    <h1>Hello World</h1>\n</body>\n</html>"),
+        # ========= 操作系统示例 =========
+        ("how make os in c plus plus",
+         "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n\ntypedef struct {\n    char name[50];\n    int size;\n} FileEntry;\n\nFileEntry fat32[256];\nint fat_count = 0;\n\nvoid init_disk() {\n    for (int i = 0; i < 256; i++)\n        fat32[i].name[0] = 0;\n}\n\nint create_file(char *name) {\n    if (fat_count >= 256) return -1;\n    strncpy(fat32[fat_count].name, name, 49);\n    fat32[fat_count].size = 0;\n    return fat_count++;\n}"),
     ]
     for _ in range(20):
         pairs.extend(built_in_code)
@@ -669,13 +757,14 @@ def main():
         return
 
     print("=" * 60)
-    print("NextAI-LSTM v6 - 领域前缀 + EOS自终止 + 零乱码")
+    print("NextAI-LSTM v7 - 领域前缀 + EOS自终止 + 零乱码 + 扩展模型")
     print("设备: {}, d_model={}, hidden={}, n_layers={}, max_len={}".format(
         DEVICE, CFG["d_model"], CFG["hidden_size"], CFG["n_layers"], CFG["max_len"]))
     print("=" * 60)
 
     print("\n[1/5] 加载数据集...")
     identity_pairs = build_identity_pairs()
+    persona_pairs = build_persona_pairs()
     translation_pairs = build_translation_pairs()
     qa_pairs_builtin = build_general_qa_pairs()
     qa_pairs_xtreme = load_xtreme_qa("/workspace/xtreme_data", max_samples=200)
@@ -686,7 +775,7 @@ def main():
     physics_pairs = load_physics_data(max_samples=1000)
 
     all_texts = []
-    for s, t in identity_pairs + translation_pairs + qa_pairs_builtin + qa_pairs_xtreme + firefly_pairs + code_pairs + legal_pairs + finance_pairs + physics_pairs:
+    for s, t in identity_pairs + persona_pairs + translation_pairs + qa_pairs_builtin + qa_pairs_xtreme + firefly_pairs + code_pairs + legal_pairs + finance_pairs + physics_pairs:
         all_texts.extend([s, t])
     print("  总文本数: {}".format(len(all_texts)))
 
@@ -729,28 +818,47 @@ def main():
 
     # 测试样本 - 覆盖所有领域（不带前缀，由下面测试逻辑加）
     test_samples = [
+        # 身份/角色
         ("IDENTITY", "你是谁？", "NextAI"),
         ("IDENTITY", "你的名字是什么？", "NextAI"),
         ("IDENTITY", "What is your name?", "NextAI"),
         ("IDENTITY", "Are you human?", "No"),
+        ("IDENTITY", "你好", "NextAI"),
+        ("IDENTITY", "Hi", "NextAI"),
+        # 翻译
         ("TRANSLATE", "translate to English: 你好", "Hello"),
         ("TRANSLATE", "translate to English: 谢谢你", "Thank"),
         ("TRANSLATE", "翻译成中文：Hello", "你好"),
         ("TRANSLATE", "übersetze ins Deutsche: Hello", "Hallo"),
+        # 通用问答
         ("QA", "Q: 法国的首都是什么？", "巴黎"),
         ("QA", "Q: What is the capital of France?", "Paris"),
         ("QA", "Q: 什么是人工智能？", "人工智能"),
+        # 代码（检查格式关键字）
         ("CODE", "Write a Python function to calculate factorial", "def factorial"),
+        ("CODE", "Python function to check prime number", "def is_prime"),
+        ("CODE", "Python function for quicksort algorithm", "def quicksort"),
+        ("CODE", "Python class for a stack data structure", "class Stack"),
+        ("CODE", "Python function to read a file", "with open"),
         ("CODE", "Write a C function to add two integers", "int add"),
+        ("CODE", "C function for binary search", "int binary"),
+        ("CODE", "C program to print Hello World", "#include"),
+        ("CODE", "C++ function for bubble sort", "void bubbleSort"),
+        ("CODE", "C++ class for stack data structure", "class Stack"),
+        ("CODE", "Java function to calculate factorial", "public static"),
+        ("CODE", "JavaScript function to calculate factorial", "function factorial"),
         ("CODE", "how make os in c plus plus", "include"),
         ("CODE", "如何用Python读取文件", "open"),
+        # 法律
         ("LAW", "什么是合同？", "合同"),
         ("LAW", "What is a contract?", "contract"),
         ("LAW", "Was ist ein Vertrag?", "Vertrag"),
+        # 金融
         ("FINANCE", "什么是股票？", "股票"),
         ("FINANCE", "What is a stock?", "stock"),
         ("FINANCE", "Was ist eine Aktie?", "Aktie"),
         ("FINANCE", "什么是GDP？", "GDP"),
+        # 物理
         ("PHYSICS", "什么是牛顿第一定律？", "牛顿"),
         ("PHYSICS", "What is Newton's first law?", "Newton"),
         ("PHYSICS", "Was ist der erste Newtonsche Gesetz?", "Newton"),
@@ -820,17 +928,25 @@ def main():
             model.eval()
             print("  ---- 测试输出 ----")
             n_ok = 0
+            n_garbled = 0
             for domain, q, expected in test_samples:
                 # 推理时加上与训练一致的领域前缀
                 src_ids = tokenizer.encode(DOMAIN_PREFIX[domain] + q, max_len=CFG["max_len"])
-                out_ids = model.generate(src_ids, max_new=80)
+                out_ids = model.generate(src_ids, max_new=120)
                 gen = tokenizer.decode(out_ids)
-                marker = "✓" if (expected[:8] in gen or expected.lower()[:8] in gen.lower()) and len(gen) > 3 else "·"
-                if marker == "✓":
+                # 乱码检查
+                has_garbled = '\ufffd' in gen or '�' in gen
+                if has_garbled:
+                    n_garbled += 1
+                    marker = "⚠️(乱码)"
+                elif (expected[:8] in gen or expected.lower()[:8] in gen.lower()) and len(gen) > 3:
+                    marker = "✓"
                     n_ok += 1
+                else:
+                    marker = "·"
                 print("  {} [{}] Q: {}".format(marker, domain, q[:50]))
                 print("    输出: {}".format(gen[:120]))
-            print("  ------------------- 正确: {}/{}".format(n_ok, len(test_samples)))
+            print("  ------------------- 正确: {}/{}, 乱码: {}".format(n_ok, len(test_samples), n_garbled))
 
             ckpt = {
                 "cfg": CFG,
