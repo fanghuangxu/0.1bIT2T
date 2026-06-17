@@ -327,10 +327,10 @@ class LSTMDecoder(nn.Module):
         return logits, (torch.stack(new_h), torch.stack(new_c))
 
 
-class LSTMNextAI(nn.Module):
+class NextAILSTM(nn.Module):
     """LSTM 版本的 NextAI（当前训练架构）。"""
     def __init__(self, cfg):
-        super(LSTMNextAI, self).__init__()
+        super(NextAILSTM, self).__init__()
         self.cfg = cfg
         self.encoder = BiLSTMEncoder(cfg)
         self.decoder = LSTMDecoder(cfg)
@@ -395,7 +395,6 @@ class LSTMNextAI(nn.Module):
 
     @torch.no_grad()
     def generate_stream(self, src_ids, max_new=80, tokenizer=None):
-        """流式生成，yield 每个 token id，自动抑制 UNK/乱码。"""
         self.eval()
         device = next(self.parameters()).device
         src = torch.tensor([src_ids], dtype=torch.long).to(device)
@@ -407,37 +406,16 @@ class LSTMNextAI(nn.Module):
         c = torch.zeros(self.cfg["n_layers"], 1, self.cfg["hidden_size"]).to(device)
         prev_tok = BOS
         generated = [BOS]
-        raw_bytes = b""
         token_counts = {}
-
-        def _valid_utf8_mid(b):
-            """检查字节流 b 的非尾部部分是否为有效 UTF-8。
-            允许尾部有不完整的多字节序列（将被后续 token 补全）。"""
-            if not b:
-                return True
-            try:
-                b.decode('utf-8')
-                return True
-            except UnicodeDecodeError:
-                # 找到最后一个完整有效的 UTF-8 字符边界
-                for trim in range(1, min(6, len(b)) + 1):
-                    try:
-                        b[:-trim].decode('utf-8')
-                        return True
-                    except UnicodeDecodeError:
-                        continue
-                return False
 
         for step in range(max_new):
             step_in = torch.tensor([[prev_tok]], dtype=torch.long).to(device)
             logits, (h, c) = self.decoder.step(step_in, enc_out, h, c)
             last_logits = logits[0, -1, :].clone()
 
-            # 强烈抑制 UNK 和 PAD，避免乱码
             last_logits[UNK] = -1e9
             last_logits[PAD] = -1e9
 
-            # 重复 token 惩罚
             for tok_id, count in token_counts.items():
                 penalty = 1.5 + 0.5 * min(count, 5)
                 if last_logits[tok_id] > 0:
@@ -454,32 +432,13 @@ class LSTMNextAI(nn.Module):
                         last_logits[generated[-1]] -= 3.0
                         break
 
-            # 从 top-5 中选择第一个通过 UTF-8 验证的 token
-            next_tok = None
-            top_k = torch.topk(last_logits, k=5)
-            for cand_idx in range(5):
-                cand_tok = top_k.indices[cand_idx].item()
-                if cand_tok in (EOS, PAD, UNK):
-                    continue
-                if tokenizer is not None:
-                    tok_bytes = tokenizer.i2b.get(cand_tok, b'')
-                    if tok_bytes and not _valid_utf8_mid(raw_bytes + tok_bytes):
-                        continue
-                next_tok = cand_tok
-                if tokenizer is not None:
-                    raw_bytes += tokenizer.i2b.get(cand_tok, b'')
+            next_tok = torch.argmax(last_logits).item()
+
+            if next_tok == EOS:
                 break
 
-            # 回退：直接选最大概率
-            if next_tok is None:
-                next_tok = torch.argmax(last_logits).item()
-                if next_tok in (EOS, PAD, UNK):
-                    break
-                if tokenizer is not None:
-                    raw_bytes += tokenizer.i2b.get(next_tok, b'')
-
-            if next_tok in (EOS, PAD, UNK):
-                break
+            if next_tok in (PAD, UNK):
+                continue
 
             token_counts[next_tok] = token_counts.get(next_tok, 0) + 1
             generated.append(next_tok)
@@ -509,7 +468,7 @@ def load_model(path):
         # LSTM 模型：没有 d_ff/n_heads，或 hidden_size 较小
         if "d_ff" not in cfg or cfg.get("d_ff", 0) == 0:
             print("检测为 LSTM 模型架构")
-            model = LSTMNextAI(cfg)
+            model = NextAILSTM(cfg)
         else:
             print("检测为 Transformer 模型架构")
             model = TransformerNextAI(cfg)
@@ -521,7 +480,7 @@ def load_model(path):
     model.eval()
 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    arch_name = "LSTM" if isinstance(model, LSTMNextAI) else "Transformer"
+    arch_name = "LSTM" if isinstance(model, NextAILSTM) else "Transformer"
     print("模型加载完成: {} ({}), {} 参数, vocab={}, d_model={}".format(
         arch_name, model_type, n_params, cfg["vocab_size"], cfg.get("d_model", cfg.get("hidden_size", "?"))))
     return model, tokenizer
@@ -535,6 +494,18 @@ def _detect_domain(text):
     for kw in strong_translate:
         if kw in t:
             return "[TRANSLATE] " + text
+
+    # Markdown 格式
+    md_kw = ['markdown', 'md格式', '用markdown', '请用markdown', '格式输出']
+    for kw in md_kw:
+        if kw in t:
+            return "[MD] " + text
+
+    # 角色扮演关键词
+    roleplay_kw = ['你扮演', '请扮演', '角色', 'role:', 'roleplay', '假装你是', '假设你是']
+    for kw in roleplay_kw:
+        if kw in t:
+            return "[ROLEPLAY] " + text
 
     # 身份/自我介绍
     identity_kw = ['你是谁', '你的名字', 'who are you', 'what is your name',
@@ -601,7 +572,13 @@ def main():
     print("=" * 60)
     print("NextAI 对话系统 (输入 'quit' 或 'exit' 退出)")
     print("支持: 身份问答 / 中英德翻译 / 简单问答 / 代码 / 法律 / 金融 / 物理")
+    print("新增: 多轮对话 / 角色扮演 / Markdown格式输出")
+    print("指令: 'clear' 清空上下文, 'role xxx' 设置角色")
     print("=" * 60)
+
+    context_history = []
+    current_role = None
+    max_context_turns = 5
 
     while True:
         try:
@@ -615,27 +592,46 @@ def main():
         if user_input.lower() in ("quit", "exit", "q", "退出"):
             print("再见!")
             break
+        if user_input.lower() == "clear":
+            context_history = []
+            current_role = None
+            print("上下文已清空")
+            continue
+        if user_input.lower().startswith("role "):
+            current_role = user_input[5:].strip()
+            print("角色已设置: {}".format(current_role))
+            continue
 
-        # 自动检测学科领域并添加前缀
-        prefixed_input = _detect_domain(user_input)
+        if current_role:
+            full_input = "角色：{} 用户：{}".format(current_role, user_input)
+        else:
+            full_input = user_input
+
+        if context_history:
+            context_str = "\\n".join(context_history)
+            full_input = context_str + "\\n用户：" + full_input
+
+        prefixed_input = _detect_domain(full_input)
 
         sys.stdout.write("NextAI: ")
         sys.stdout.flush()
 
         src_ids = tokenizer.encode(prefixed_input, max_len=model.cfg["max_len"])
 
-        # 累积所有 token ID，结束后整体解码 — 避免单 token UTF-8 乱码
         generated_ids = []
-        for tok_id in model.generate_stream(src_ids, max_new=120):
+        for tok_id in model.generate_stream(src_ids, max_new=150):
             generated_ids.append(tok_id)
 
-        # 整体解码：errors='ignore' 会舍弃无效 UTF-8 字节，确保无 � 乱码
         if generated_ids:
             text = tokenizer.decode(generated_ids)
             if not text.strip():
                 sys.stdout.write("(模型暂无有效输出)")
             else:
                 sys.stdout.write(text)
+                context_history.append("用户：{}".format(user_input))
+                context_history.append("助手：{}".format(text))
+                if len(context_history) > max_context_turns * 2:
+                    context_history = context_history[-max_context_turns * 2:]
         else:
             sys.stdout.write("(模型暂无有效输出)")
 
