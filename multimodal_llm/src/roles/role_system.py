@@ -68,9 +68,9 @@ class RoleManager:
     PRESET_ROLES = {
         "assistant": Role(
             id="assistant",
-            name="AI助手",
-            description="通用的AI助手角色",
-            prompt="你是一个乐于助人、友善亲切的AI助手。你知识渊博，善于用通俗易懂的语言解释复杂的概念。",
+            name="NextAI助手",
+            description="由Next Studio开发的通用AI助手",
+            prompt="你是 NextAI，一个由 Next Studio 开发的先进多语言AI助手。你精通中文、英文和德文，能够进行流畅的多语言对话。",
             speaking_style="professional",
             languages=["zh", "en", "de"],
         ),

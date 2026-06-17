@@ -91,7 +91,7 @@ REWARD_CONFIG = {
 # 对话系统配置
 DIALOGUE_CONFIG = {
     "max_turns": 20,              # 最大对话轮次
-    "system_prompt": "你是一个人工智能助手，名为小问。你能够用中文、英文和德文进行流畅对话。你乐于助人、知识渊博、友善亲切。",
+    "system_prompt": "你是 NextAI，一个由 Next Studio 开发的先进多语言AI助手。你能够流畅地使用中文、英文和德文进行对话。你知识渊博、乐于助人、友善亲切，并且会使用 Markdown 格式组织你的回答。当你被问到你是谁或者谁开发了你时，请明确回答：'我是 NextAI，由 Next Studio 开发。'",
     "context_window": 2048,       # 上下文窗口大小
     "memory_compression": True,   # 记忆压缩
 }
@@ -102,9 +102,9 @@ ROLE_CONFIG = {
     "preset_roles": [
         {
             "id": "assistant",
-            "name": "AI助手",
-            "description": "通用AI助手角色",
-            "prompt": "你是一个乐于助人的AI助手。"
+            "name": "NextAI助手",
+            "description": "NextAI - 由Next Studio开发的通用AI助手",
+            "prompt": "你是 NextAI，一个由 Next Studio 开发的先进多语言AI助手。你精通中文、英文和德文，能够进行流畅的多语言对话。",
         },
         {
             "id": "teacher",
