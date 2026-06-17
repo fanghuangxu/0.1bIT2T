@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""NextAI 对话脚本 — 加载 nextai-full.pt 进行交互式对话。
+"""NextAI 对话脚本 — 加载 .pt 模型进行交互式对话。
 
-支持两种模型架构：
-  - LSTM: NextAILSTM (LSTM seq2seq + 双向编码器 + 注意力)
-  - Transformer: NextAI (原 Transformer 模型)
+功能:
+  - 自动加载 LSTM / Transformer 架构的 .pt 模型
+  - 流式 token 输出（逐字显示）
+  - 多人对话（通过 @用户名 切换/维护各自上下文）
+  - 快捷命令: /clear 清除上下文, /exit 退出, /users 查看用户列表, /who 查看当前用户
 """
 from __future__ import print_function
 
+import argparse
 import math
 import sys
 
@@ -51,7 +54,7 @@ class ByteTokenizer:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Transformer 模型（原架构）
+# Transformer 模型（legacy）
 # ─────────────────────────────────────────────────────────────────────────────
 class MultiHeadAttention(nn.Module):
     def __init__(self, d, n_heads):
@@ -160,36 +163,7 @@ class TransformerNextAI(nn.Module):
         return self.out(dec_out)
 
     @torch.no_grad()
-    def generate(self, src_ids, max_new=60):
-        self.eval()
-        device = next(self.parameters()).device
-        src = torch.tensor([src_ids], dtype=torch.long).to(device)
-        src_mask = (src != PAD).long().to(device)
-        generated = [BOS]
-
-        for step in range(max_new):
-            tgt = torch.tensor([generated], dtype=torch.long).to(device)
-            logits = self.forward(src, tgt, src_mask)
-            next_tok = torch.argmax(logits[0, -1, :]).item()
-
-            if next_tok in (EOS, PAD):
-                break
-
-            # 防止连续 4 个相同 token
-            if len(generated) >= 4 and all(x == next_tok for x in generated[-4:]):
-                sorted_logits, sorted_idx = torch.sort(logits[0, -1, :], descending=True)
-                for idx in sorted_idx[1:]:
-                    candidate = idx.item()
-                    if candidate not in (PAD, BOS):
-                        next_tok = candidate
-                        break
-
-            generated.append(next_tok)
-
-        return generated[1:]
-
-    @torch.no_grad()
-    def generate_stream(self, src_ids, max_new=60):
+    def generate_stream(self, src_ids, max_new=120, tokenizer=None):
         self.eval()
         device = next(self.parameters()).device
         src = torch.tensor([src_ids], dtype=torch.long).to(device)
@@ -217,7 +191,7 @@ class TransformerNextAI(nn.Module):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# LSTM 模型（当前训练的主架构）
+# LSTM 模型（当前训练架构）
 # ─────────────────────────────────────────────────────────────────────────────
 class BiLSTMEncoder(nn.Module):
     def __init__(self, cfg):
@@ -293,11 +267,7 @@ class LSTMDecoder(nn.Module):
 
     @torch.no_grad()
     def step(self, tgt_input, enc_out, h, c):
-        """单步解码（用于增量生成）。
-
-        期望 h, c 形状: (n_layers, batch, hidden_size)
-        返回 h, c 形状: (n_layers, batch, hidden_size)
-        """
+        """单步解码（用于增量生成）。"""
         x = self.embed(tgt_input)
         current = x
         new_h = []
@@ -336,30 +306,6 @@ class NextAILSTM(nn.Module):
         return logits
 
     @torch.no_grad()
-    def generate(self, src_ids, max_new=80):
-        """贪心解码，EOS 终止。"""
-        self.eval()
-        device = next(self.parameters()).device
-        src = torch.tensor([src_ids], dtype=torch.long).to(device)
-        src_lengths = torch.tensor([len(src_ids)], dtype=torch.long)
-        enc_out = self.encoder(src, src_lengths)
-
-        generated = [BOS]
-        h = torch.zeros(self.cfg["n_layers"], 1, self.cfg["hidden_size"]).to(device)
-        c = torch.zeros(self.cfg["n_layers"], 1, self.cfg["hidden_size"]).to(device)
-        prev_tok = BOS
-
-        for step in range(max_new):
-            step_in = torch.tensor([[prev_tok]], dtype=torch.long).to(device)
-            logits, (h, c) = self.decoder.step(step_in, enc_out, h, c)
-            next_tok = torch.argmax(logits[0, -1, :]).item()
-            if next_tok in (EOS, PAD, UNK):
-                break
-            generated.append(next_tok)
-            prev_tok = next_tok
-        return generated[1:]
-
-    @torch.no_grad()
     def generate_stream(self, src_ids, max_new=120, tokenizer=None):
         """流式生成，抑制 PAD/UNK，EOS 终止。"""
         self.eval()
@@ -378,7 +324,6 @@ class NextAILSTM(nn.Module):
             logits, (h, c) = self.decoder.step(step_in, enc_out, h, c)
             last_logits = logits[0, -1, :].clone()
 
-            # 抑制 PAD/UNK 避免乱码
             last_logits[UNK] = -1e9
             last_logits[PAD] = -1e9
 
@@ -401,21 +346,18 @@ def load_model(path):
     cfg = ckpt["cfg"]
     tok_data = ckpt.get("tokenizer") or ckpt.get("tokenizer_data")
 
-    tokenizer = ByteTokenizer(
-        tok_data["b2i"], tok_data["i2b"],
-        tok_data["merges"], tok_data["vocab_size"]
-    )
+    if tok_data is None:
+        tokenizer = ByteTokenizer()
+    else:
+        tokenizer = ByteTokenizer(
+            tok_data.get("b2i"), tok_data.get("i2b"),
+            tok_data.get("merges"), tok_data.get("vocab_size", 260)
+        )
 
-    # 根据配置自动选择架构
     model_type = ckpt.get("model_type", "")
-    if model_type == "lstm" or "hidden_size" in cfg:
-        # LSTM 模型：没有 d_ff/n_heads，或 hidden_size 较小
-        if "d_ff" not in cfg or cfg.get("d_ff", 0) == 0:
-            print("检测为 LSTM 模型架构")
-            model = NextAILSTM(cfg)
-        else:
-            print("检测为 Transformer 模型架构")
-            model = TransformerNextAI(cfg)
+    if model_type == "lstm" or ("hidden_size" in cfg and cfg.get("d_ff", 0) == 0):
+        print("检测为 LSTM 模型架构")
+        model = NextAILSTM(cfg)
     else:
         print("检测为 Transformer 模型架构")
         model = TransformerNextAI(cfg)
@@ -430,40 +372,101 @@ def load_model(path):
     return model, tokenizer
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 上下文 / 多人对话管理
+# ─────────────────────────────────────────────────────────────────────────────
+class ConversationManager:
+    """维护多个用户的对话历史。
+
+    - 每个用户有独立的上下文（用于拼接历史对话）
+    - 历史记录有长度上限，超出自动截断最早的轮次
+    """
+
+    def __init__(self, max_history_chars=2000):
+        self.users = {}          # user -> list of (role, text)
+        self.current_user = "我"  # 默认用户名
+        self.max_history_chars = max_history_chars
+
+    def switch_user(self, name):
+        """切换当前用户（首次使用时自动创建会话）。"""
+        if name not in self.users:
+            self.users[name] = []
+        self.current_user = name
+
+    def add_turn(self, user, user_text, ai_text):
+        """追加一轮对话。"""
+        if user not in self.users:
+            self.users[user] = []
+        self.users[user].append(("U", user_text))
+        self.users[user].append(("A", ai_text))
+        self._trim(user)
+
+    def _trim(self, user):
+        """总长度超出上限时，删除最旧的轮次。"""
+        turns = self.users[user]
+        while True:
+            total = sum(len(t) for _, t in turns)
+            if total <= self.max_history_chars:
+                break
+            if len(turns) <= 2:
+                break
+            turns.pop(0)
+            turns.pop(0)
+
+    def build_prompt(self, user, new_text):
+        """将历史对话与新输入拼接成 prompt。
+
+        格式: [HISTORY: 用户: ... / NextAI: ...] 你好
+        """
+        turns = self.users.get(user, [])
+        if not turns:
+            return new_text
+        history_parts = []
+        for role, text in turns:
+            speaker = user if role == "U" else "NextAI"
+            history_parts.append("{}: {}".format(speaker, text))
+        history = " ; ".join(history_parts)
+        return "[HISTORY: {}] {}".format(history, new_text)
+
+    def clear(self, user=None):
+        """清除某个用户的上下文；不指定则清除当前用户。"""
+        target = user or self.current_user
+        if target in self.users:
+            self.users[target] = []
+            return True
+        return False
+
+    def list_users(self):
+        return list(self.users.keys())
+
+
 def _detect_domain(text):
     """根据用户输入自动检测学科领域，添加对应的前缀标记。"""
     t = text.lower()
-    # 强翻译关键词：这些词单独出现就足以表明是翻译任务
     strong_translate = ['translate to', '翻译成', 'übersetze', 'translation', '翻译']
     for kw in strong_translate:
         if kw in t:
             return "[TRANSLATE] " + text
 
-    # 身份/自我介绍
     identity_kw = ['你是谁', '你的名字', 'who are you', 'what is your name',
                    'are you human', '你是人类', '你叫什么', '介绍一下你自己',
                    '介绍自己', '你是由谁开发的', 'who created you',
                    '再见', 'goodbye',
                    '你好', 'hello', 'hi', '嗨',
                    '我是', 'my name']
-    # 翻译（较弱，需要更多上下文）
     translate_kw = ['translate', '英文', '中文', '德语']
-    # 代码领域
     code_kw = ['code', 'python', 'java', 'c++', 'c语言', 'javascript',
                '编程', 'function', 'def ', 'class ', 'void ', 'int main',
                '算法', '排序', '链表', '树', '栈', '队列', 'os', '操作系统',
                'html', 'css', 'sql', 'rust', 'go语言', 'typescript', 'php',
                '程序', '编译', '源码', 'how to', 'write a', 'implement',
                '写一个', '如何写', 'write an', 'how do you']
-    # 法律领域
     law_kw = ['法律', 'law', '合同', 'contract', '条例', '法规', '刑事责任',
                '民事', '判决', '法庭', '诉讼', '原告', '被告', '侵权',
                'recht', 'vertrag', 'gesetz', 'klage', 'urteil']
-    # 金融领域
     finance_kw = ['金融', 'finance', 'stock', '股票', '投资', '债券', '基金',
                   'bank', '银行', '利率', '汇率', '通胀', 'gdp', '期权', '期货',
                   '市值', '市盈率', '理财', 'aktie', 'anleihe', 'fonds']
-    # 物理领域
     physics_kw = ['物理', 'physics', '牛顿', 'newton', '相对论', '量子', 'quantum',
                   '力学', '电磁', '热力学', '熵', '核聚变', '黑洞', '引力', '万有引力',
                   'momentum', 'energie', 'gravitation', 'quanten']
@@ -494,56 +497,189 @@ def _detect_domain(text):
     return text
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 流式输出辅助
+# ─────────────────────────────────────────────────────────────────────────────
+def stream_generate_and_print(model, tokenizer, prompt, max_new=120):
+    """流式生成并逐 token 解码到 stdout，累积后整体 decode 保证 UTF-8 不乱码。
+
+    返回 (生成的文本, 生成的 token id 列表)。
+    """
+    src_ids = tokenizer.encode(prompt, max_len=model.cfg["max_len"])
+    generated_ids = []
+    prev_text_len = 0
+
+    for tok_id in model.generate_stream(src_ids, max_new=max_new):
+        generated_ids.append(tok_id)
+        # 尝试增量解码 — 累积到一定数量后输出一次文本增量
+        text_so_far = tokenizer.decode(generated_ids)
+        if len(text_so_far) > prev_text_len:
+            delta = text_so_far[prev_text_len:]
+            sys.stdout.write(delta)
+            sys.stdout.flush()
+            prev_text_len = len(text_so_far)
+
+    # 结束时再次整体 decode，输出剩余部分
+    final_text = tokenizer.decode(generated_ids)
+    if len(final_text) > prev_text_len:
+        sys.stdout.write(final_text[prev_text_len:])
+        sys.stdout.flush()
+
+    return final_text, generated_ids
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 主程序
+# ─────────────────────────────────────────────────────────────────────────────
+def print_banner():
+    print("=" * 60)
+    print("NextAI 对话系统 — 由 Next Studio 开发")
+    print("支持: 身份问答 / 中英德翻译 / 代码 / 法律 / 金融 / 物理")
+    print("-" * 60)
+    print("多人对话: 输入 '@用户名 你好' 切换/创建用户上下文")
+    print("快捷命令:")
+    print("  /clear   - 清除当前用户的对话上下文")
+    print("  /exit    - 退出程序 (也可用 quit / exit / q / 退出)")
+    print("  /who     - 查看当前用户")
+    print("  /users   - 查看所有用户的上下文状态")
+    print("=" * 60)
+
+
+def handle_commands(line, cm):
+    """处理快捷命令；返回 (handled, should_exit)。"""
+    cmd = line.strip().lower()
+
+    if cmd in ("/exit", "quit", "exit", "q", "退出"):
+        print("再见!")
+        return True, True
+
+    if cmd == "/clear":
+        cm.clear()
+        print("[系统] 已清除用户 '{}' 的对话上下文".format(cm.current_user))
+        return True, False
+
+    if cmd == "/who":
+        print("[系统] 当前用户: {}".format(cm.current_user))
+        print("[系统] 该用户对话历史轮次: {}".format(
+            len(cm.users.get(cm.current_user, [])) // 2))
+        return True, False
+
+    if cmd == "/users":
+        users = cm.list_users()
+        if not users:
+            print("[系统] 暂无用户会话")
+        else:
+            print("[系统] 已有用户会话:")
+            for u in users:
+                turns = len(cm.users[u]) // 2
+                marker = "  <- 当前" if u == cm.current_user else ""
+                print("  - {}{} ({} 轮)".format(u, marker, turns))
+        return True, False
+
+    return False, False
+
+
+def parse_user_prefix(line):
+    """解析 '@用户名 内容' 格式；返回 (username_or_None, remaining_text)。"""
+    stripped = line.strip()
+    if stripped.startswith("@"):
+        parts = stripped[1:].split(None, 1)
+        if parts:
+            username = parts[0]
+            rest = parts[1] if len(parts) > 1 else ""
+            return username, rest.strip()
+    return None, stripped
+
+
 def main():
-    model_path = "/workspace/nextai-full.pt"
-    if len(sys.argv) > 1:
-        model_path = sys.argv[1]
+    parser = argparse.ArgumentParser(description="NextAI 交互式对话")
+    parser.add_argument("model", nargs="?", default="/workspace/nextai-full.pt",
+                        help=".pt 模型文件路径")
+    parser.add_argument("--user", "-u", default="我",
+                        help="初始用户名 (默认: 我)")
+    parser.add_argument("--max-new", type=int, default=120,
+                        help="每轮最大生成 token 数 (默认: 120)")
+    parser.add_argument("--max-history", type=int, default=2000,
+                        help="上下文最大字符数 (默认: 2000)")
+    parser.add_argument("--no-history", action="store_true",
+                        help="禁用上下文（每次都是独立对话）")
+    args = parser.parse_args()
 
-    model, tokenizer = load_model(model_path)
+    # 加载模型
+    try:
+        model, tokenizer = load_model(args.model)
+    except FileNotFoundError:
+        print("错误: 找不到模型文件 {}".format(args.model))
+        sys.exit(1)
+    except Exception as e:
+        print("错误: 加载模型失败 — {}".format(e))
+        sys.exit(1)
 
-    print("=" * 60)
-    print("NextAI 对话系统 (输入 'quit' 或 'exit' 退出)")
-    print("支持: 身份问答 / 中英德翻译 / 简单问答 / 代码 / 法律 / 金融 / 物理")
-    print("=" * 60)
+    # 初始化对话管理
+    cm = ConversationManager(max_history_chars=args.max_history)
+    cm.switch_user(args.user)
+    if not args.no_history:
+        cm.users[cm.current_user] = []
+
+    print_banner()
+    print("[系统] 初始用户: {}  (输入 /users 查看所有用户, /clear 清除上下文)"
+          .format(cm.current_user))
 
     while True:
         try:
-            user_input = input("\n你: ").strip()
+            prompt_str = "\n{}: ".format(cm.current_user)
+            user_input = input(prompt_str).strip()
         except (EOFError, KeyboardInterrupt):
             print("\n再见!")
             break
 
         if not user_input:
             continue
-        if user_input.lower() in ("quit", "exit", "q", "退出"):
-            print("再见!")
+
+        # 1. 处理快捷命令
+        handled, should_exit = handle_commands(user_input, cm)
+        if should_exit:
             break
+        if handled:
+            continue
 
-        # 自动检测学科领域并添加前缀
-        prefixed_input = _detect_domain(user_input)
+        # 2. 解析 '@用户名 内容' 多人对话前缀
+        user_name, content = parse_user_prefix(user_input)
+        if user_name is not None:
+            cm.switch_user(user_name)
+            if not content:
+                print("[系统] 已切换到用户 '{}'".format(user_name))
+                continue
+            user_input = content
 
+        # 3. 构建带上下文的 prompt
+        if args.no_history:
+            prompt_text = user_input
+        else:
+            prompt_text = cm.build_prompt(cm.current_user, user_input)
+
+        # 4. 添加领域前缀
+        prefixed = _detect_domain(prompt_text)
+
+        # 5. 流式生成并输出
         sys.stdout.write("NextAI: ")
         sys.stdout.flush()
 
-        src_ids = tokenizer.encode(prefixed_input, max_len=model.cfg["max_len"])
-
-        # 累积所有 token ID，结束后整体解码 — 避免单 token UTF-8 乱码
-        generated_ids = []
-        for tok_id in model.generate_stream(src_ids, max_new=120):
-            generated_ids.append(tok_id)
-
-        # 整体解码：errors='ignore' 会舍弃无效 UTF-8 字节，确保无 � 乱码
-        if generated_ids:
-            text = tokenizer.decode(generated_ids)
-            if not text.strip():
-                sys.stdout.write("(模型暂无有效输出)")
-            else:
-                sys.stdout.write(text)
-        else:
-            sys.stdout.write("(模型暂无有效输出)")
+        ai_text, _ = stream_generate_and_print(
+            model, tokenizer, prefixed, max_new=args.max_new
+        )
 
         sys.stdout.write("\n")
         sys.stdout.flush()
+
+        # 6. 如果没有有效输出，做提示
+        if not ai_text.strip():
+            # 覆盖掉 "NextAI: " 后的输出提示
+            pass
+
+        # 7. 记录上下文
+        if not args.no_history:
+            cm.add_turn(cm.current_user, user_input, ai_text)
 
 
 if __name__ == "__main__":
