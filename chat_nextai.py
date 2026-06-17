@@ -376,57 +376,56 @@ def load_model(path):
 # 上下文 / 多人对话管理
 # ─────────────────────────────────────────────────────────────────────────────
 class ConversationManager:
-    """维护多个用户的对话历史。
+    """维护多个用户的多轮对话历史。
 
     - 每个用户有独立的上下文（用于拼接历史对话）
-    - 历史记录有长度上限，超出自动截断最早的轮次
+    - 双限制策略: 同时按 turn 数 + 字符数截断，避免 prompt 过长
+    - 支持系统提示词、撤销最后一轮、保存加载对话
     """
 
-    def __init__(self, max_history_chars=2000):
-        self.users = {}          # user -> list of (role, text)
-        self.current_user = "我"  # 默认用户名
+    def __init__(self, max_history_chars=2000, max_turns=10):
+        self.users = {}                    # user -> list of (role, text)
+        self.user_persona = {}             # user -> 系统提示词
+        self.current_user = "我"            # 默认用户名
         self.max_history_chars = max_history_chars
+        self.max_turns = max_turns
 
+    # ── 用户管理 ─────────────────────────────────────────────────
     def switch_user(self, name):
         """切换当前用户（首次使用时自动创建会话）。"""
         if name not in self.users:
             self.users[name] = []
+            self.user_persona[name] = ""
         self.current_user = name
 
+    def has_user(self, name):
+        return name in self.users
+
+    def list_users(self):
+        return list(self.users.keys())
+
+    # ── 对话管理 ─────────────────────────────────────────────────
     def add_turn(self, user, user_text, ai_text):
-        """追加一轮对话。"""
+        """追加一轮对话（U + A）。"""
         if user not in self.users:
             self.users[user] = []
         self.users[user].append(("U", user_text))
         self.users[user].append(("A", ai_text))
         self._trim(user)
 
-    def _trim(self, user):
-        """总长度超出上限时，删除最旧的轮次。"""
-        turns = self.users[user]
-        while True:
-            total = sum(len(t) for _, t in turns)
-            if total <= self.max_history_chars:
-                break
-            if len(turns) <= 2:
-                break
-            turns.pop(0)
-            turns.pop(0)
-
-    def build_prompt(self, user, new_text):
-        """将历史对话与新输入拼接成 prompt。
-
-        格式: [HISTORY: 用户: ... / NextAI: ...] 你好
-        """
-        turns = self.users.get(user, [])
-        if not turns:
-            return new_text
-        history_parts = []
-        for role, text in turns:
-            speaker = user if role == "U" else "NextAI"
-            history_parts.append("{}: {}".format(speaker, text))
-        history = " ; ".join(history_parts)
-        return "[HISTORY: {}] {}".format(history, new_text)
+    def undo_last(self, user=None):
+        """撤销最后一轮（即最后一组 U+A）。返回 True 表示成功。"""
+        target = user or self.current_user
+        turns = self.users.get(target, [])
+        if len(turns) >= 2:
+            turns.pop()  # A
+            turns.pop()  # U
+            return True
+        # 只有一条的情况（比如用户刚输入但 AI 没回复），清空
+        if len(turns) == 1:
+            turns.pop()
+            return True
+        return False
 
     def clear(self, user=None):
         """清除某个用户的上下文；不指定则清除当前用户。"""
@@ -436,8 +435,118 @@ class ConversationManager:
             return True
         return False
 
-    def list_users(self):
-        return list(self.users.keys())
+    def clear_all_users(self):
+        """清除所有用户的上下文（不删除用户记录）。"""
+        for name in self.users:
+            self.users[name] = []
+
+    # ── 系统提示词 ────────────────────────────────────────────────
+    def set_persona(self, persona, user=None):
+        """设置某个用户的系统提示词（persona / 身份设定）。"""
+        target = user or self.current_user
+        if target not in self.user_persona:
+            self.user_persona[target] = ""
+        self.user_persona[target] = persona.strip()
+
+    def get_persona(self, user=None):
+        target = user or self.current_user
+        return self.user_persona.get(target, "")
+
+    # ── 统计 ─────────────────────────────────────────────────────
+    def turn_count(self, user=None):
+        target = user or self.current_user
+        # 每轮是一组 (U, A)，所以除以 2
+        return len(self.users.get(target, [])) // 2
+
+    def char_count(self, user=None):
+        target = user or self.current_user
+        return sum(len(t) for _, t in self.users.get(target, []))
+
+    # ── 截断策略 ─────────────────────────────────────────────────
+    def _trim(self, user):
+        """先按 turn 数截断，再按字符数截断。优先保留最近的对话。"""
+        turns = self.users[user]
+
+        # 1. turn 数限制：max_turns 对 (U,A)；超出从头部删除
+        while len(turns) // 2 > self.max_turns:
+            turns.pop(0)
+            turns.pop(0)
+
+        # 2. 字符数限制：总字符超出上限则从头部删除整轮
+        while True:
+            total = sum(len(t) for _, t in turns)
+            if total <= self.max_history_chars:
+                break
+            if len(turns) <= 2:
+                break
+            turns.pop(0)
+            turns.pop(0)
+
+    # ── 生成 prompt ──────────────────────────────────────────────
+    def build_prompt(self, user, new_text):
+        """将系统提示词 + 历史对话 + 用户新输入拼接成完整 prompt。
+
+        格式:
+          [SYSTEM: 你是NextAI...]
+          [HISTORY: 用户: xxx | NextAI: yyy | 用户: zzz]
+          用户的新问题
+        """
+        turns = self.users.get(user, [])
+        persona = self.user_persona.get(user, "")
+
+        parts = []
+
+        # 系统提示词（persona）
+        if persona:
+            parts.append("[SYSTEM: {}]".format(persona))
+
+        # 对话历史
+        if turns:
+            history_parts = []
+            for role, text in turns:
+                speaker = user if role == "U" else "NextAI"
+                history_parts.append("{}:{}".format(speaker, text))
+            parts.append("[HISTORY: {}]".format(" | ".join(history_parts)))
+
+        # 用户新输入
+        parts.append(new_text)
+        return " ".join(parts)
+
+    def pretty_history(self, user=None):
+        """将历史格式化为可读字符串（用于 /history 命令）。"""
+        target = user or self.current_user
+        turns = self.users.get(target, [])
+        if not turns:
+            return "（空对话）"
+        lines = []
+        # 每两轮作为一个 turn
+        for i in range(0, len(turns), 2):
+            turn_idx = (i // 2) + 1
+            u_msg = turns[i][1] if i < len(turns) else ""
+            a_msg = turns[i + 1][1] if (i + 1) < len(turns) else ""
+            lines.append("[Turn {}] {}: {}".format(turn_idx, target, u_msg))
+            if a_msg:
+                lines.append("[Turn {}] NextAI: {}".format(turn_idx, a_msg))
+        return "\n".join(lines)
+
+    # ── 持久化 ───────────────────────────────────────────────────
+    def to_dict(self):
+        return {
+            "users": self.users,
+            "persona": self.user_persona,
+            "current": self.current_user,
+            "max_chars": self.max_history_chars,
+            "max_turns": self.max_turns,
+        }
+
+    def from_dict(self, data):
+        """从 dict 恢复对话。"""
+        if isinstance(data, dict):
+            self.users = data.get("users", {})
+            self.user_persona = data.get("persona", {})
+            self.current_user = data.get("current", "我")
+            self.max_history_chars = data.get("max_chars", self.max_history_chars)
+            self.max_turns = data.get("max_turns", self.max_turns)
 
 
 def _detect_domain(text):
@@ -538,17 +647,36 @@ def print_banner():
     print("-" * 60)
     print("多人对话: 输入 '@用户名 你好' 切换/创建用户上下文")
     print("快捷命令:")
-    print("  /clear   - 清除当前用户的对话上下文")
-    print("  /exit    - 退出程序 (也可用 quit / exit / q / 退出)")
-    print("  /who     - 查看当前用户")
-    print("  /users   - 查看所有用户的上下文状态")
+    print("  /clear          - 清除当前用户的对话上下文")
+    print("  /exit           - 退出程序 (也可用 quit / exit / q / 退出)")
+    print("  /who            - 查看当前用户")
+    print("  /users          - 查看所有用户的上下文状态")
+    print("  /history         - 查看当前用户的多轮对话历史")
+    print("  /undo            - 撤销最后一轮对话 (U+A)")
+    print("  /status         - 显示当前会话状态统计")
+    print("  /persona 内容    - 设置系统提示词 (例: /persona 你是一个Python专家)")
+    print("  /save 文件路径    - 保存对话到文件")
+    print("  /load 文件路径    - 从文件加载对话")
     print("=" * 60)
+
+
+# 辅助函数: 解析 "命令 参数"
+def _split_cmd(line):
+    """把 '/cmd arg1 arg2' -> ('cmd', 'arg1 arg2') 或 ('cmd', '')"""
+    parts = line.strip().split(None, 1)
+    if not parts:
+        return "", ""
+    cmd = parts[0].lower()
+    rest = parts[1] if len(parts) > 1 else ""
+    return cmd, rest
 
 
 def handle_commands(line, cm):
     """处理快捷命令；返回 (handled, should_exit)。"""
-    cmd = line.strip().lower()
+    raw = line.strip()
+    cmd, arg = _split_cmd(raw)
 
+    # 纯退出类
     if cmd in ("/exit", "quit", "exit", "q", "退出"):
         print("再见!")
         return True, True
@@ -558,10 +686,18 @@ def handle_commands(line, cm):
         print("[系统] 已清除用户 '{}' 的对话上下文".format(cm.current_user))
         return True, False
 
+    if cmd == "/reset":
+        cm.clear_all_users()
+        print("[系统] 已重置所有用户对话")
+        return True, False
+
     if cmd == "/who":
         print("[系统] 当前用户: {}".format(cm.current_user))
-        print("[系统] 该用户对话历史轮次: {}".format(
-            len(cm.users.get(cm.current_user, [])) // 2))
+        print("[系统] 对话轮次: {}  |  历史字符数: {}".format(
+            cm.turn_count(), cm.char_count()))
+        persona = cm.get_persona()
+        if persona:
+            print("[系统] 系统提示词: {}".format(persona))
         return True, False
 
     if cmd == "/users":
@@ -571,9 +707,79 @@ def handle_commands(line, cm):
         else:
             print("[系统] 已有用户会话:")
             for u in users:
-                turns = len(cm.users[u]) // 2
+                turns = cm.turn_count(u)
+                chars = cm.char_count(u)
                 marker = "  <- 当前" if u == cm.current_user else ""
-                print("  - {}{} ({} 轮)".format(u, marker, turns))
+                print("  - {}{} ({} 轮, {} 字符)".format(u, marker, turns, chars))
+        return True, False
+
+    if cmd == "/history":
+        history = cm.pretty_history()
+        print("[系统] 用户 '{}' 的对话历史:".format(cm.current_user))
+        print(history)
+        return True, False
+
+    if cmd == "/undo":
+        if cm.undo_last():
+            print("[系统] 已撤销最后一轮对话 (剩余 {} 轮)".format(cm.turn_count()))
+        else:
+            print("[系统] 无可撤销的对话")
+        return True, False
+
+    if cmd == "/status":
+        u = cm.current_user
+        print("[系统] 会话状态:")
+        print("  当前用户: {}".format(u))
+        print("  对话轮次: {}".format(cm.turn_count()))
+        print("  历史字符: {}".format(cm.char_count()))
+        print("  上下文上限(turn): {}".format(cm.max_turns))
+        print("  上下文上限(字符): {}".format(cm.max_history_chars))
+        persona = cm.get_persona()
+        if persona:
+            print("  系统提示词: {}".format(persona))
+        return True, False
+
+    if cmd == "/persona":
+        if not arg:
+            # 没有参数就清除
+            cm.set_persona("")
+            print("[系统] 已清除系统提示词")
+        else:
+            cm.set_persona(arg)
+            print("[系统] 已设置系统提示词: {}".format(arg))
+        return True, False
+
+    if cmd == "/save":
+        path = arg.strip() or "nextai_chat.json"
+        try:
+            import json
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(cm.to_dict(), f, ensure_ascii=False, indent=2)
+            print("[系统] 对话已保存到: {}".format(path))
+        except Exception as e:
+            print("[系统] 保存失败: {}".format(e))
+        return True, False
+
+    if cmd == "/load":
+        path = arg.strip()
+        if not path:
+            print("[系统] 请指定文件路径: /load 文件路径")
+            return True, False
+        try:
+            import json
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            cm.from_dict(data)
+            print("[系统] 已从 {} 加载对话".format(path))
+            print("[系统] 当前用户: {}, {} 轮对话".format(cm.current_user, cm.turn_count()))
+        except FileNotFoundError:
+            print("[系统] 找不到文件: {}".format(path))
+        except Exception as e:
+            print("[系统] 加载失败: {}".format(e))
+        return True, False
+
+    if cmd == "/help":
+        print_banner()
         return True, False
 
     return False, False
@@ -592,7 +798,7 @@ def parse_user_prefix(line):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="NextAI 交互式对话")
+    parser = argparse.ArgumentParser(description="NextAI 交互式对话（多轮对话 + 多人会话）")
     parser.add_argument("model", nargs="?", default="/workspace/nextai-full.pt",
                         help=".pt 模型文件路径")
     parser.add_argument("--user", "-u", default="我",
@@ -601,6 +807,10 @@ def main():
                         help="每轮最大生成 token 数 (默认: 120)")
     parser.add_argument("--max-history", type=int, default=2000,
                         help="上下文最大字符数 (默认: 2000)")
+    parser.add_argument("--max-turns", type=int, default=10,
+                        help="上下文最大轮数 (默认: 10)")
+    parser.add_argument("--persona", type=str, default="",
+                        help="初始系统提示词 (例: --persona '你是一个Python专家')")
     parser.add_argument("--no-history", action="store_true",
                         help="禁用上下文（每次都是独立对话）")
     args = parser.parse_args()
@@ -616,18 +826,29 @@ def main():
         sys.exit(1)
 
     # 初始化对话管理
-    cm = ConversationManager(max_history_chars=args.max_history)
+    cm = ConversationManager(
+        max_history_chars=args.max_history,
+        max_turns=args.max_turns,
+    )
     cm.switch_user(args.user)
-    if not args.no_history:
-        cm.users[cm.current_user] = []
+    if args.persona:
+        cm.set_persona(args.persona)
+        print("[系统] 初始系统提示词: {}".format(args.persona))
 
     print_banner()
-    print("[系统] 初始用户: {}  (输入 /users 查看所有用户, /clear 清除上下文)"
+    print("[系统] 初始用户: {}  (每轮提示含轮次号；输入 /help 查看所有命令)"
           .format(cm.current_user))
+    if args.no_history:
+        print("[系统] 已禁用上下文（--no-history）—— 每条消息独立处理")
 
     while True:
         try:
-            prompt_str = "\n{}: ".format(cm.current_user)
+            # 显示当前用户 + 轮次
+            if args.no_history:
+                prompt_str = "\n{}: ".format(cm.current_user)
+            else:
+                t = cm.turn_count() + 1
+                prompt_str = "\n{}[Turn {}]: ".format(cm.current_user, t)
             user_input = input(prompt_str).strip()
         except (EOFError, KeyboardInterrupt):
             print("\n再见!")
@@ -652,7 +873,7 @@ def main():
                 continue
             user_input = content
 
-        # 3. 构建带上下文的 prompt
+        # 3. 构建带上下文的 prompt（系统提示 + 历史 + 新输入）
         if args.no_history:
             prompt_text = user_input
         else:
@@ -674,12 +895,15 @@ def main():
 
         # 6. 如果没有有效输出，做提示
         if not ai_text.strip():
-            # 覆盖掉 "NextAI: " 后的输出提示
-            pass
+            print("[系统] (模型暂无有效输出)")
 
-        # 7. 记录上下文
+        # 7. 记录上下文（仅当开启历史）
         if not args.no_history:
             cm.add_turn(cm.current_user, user_input, ai_text)
+
+        # 8. 超上限提示
+        if not args.no_history and cm.turn_count() >= cm.max_turns:
+            print("[系统] 提示：已达到上下文最大轮数({})，最早的对话将被自动截断".format(cm.max_turns))
 
 
 if __name__ == "__main__":
