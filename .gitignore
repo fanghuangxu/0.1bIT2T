@@ -2,6 +2,10 @@
 __pycache__/
 *.pyc
 *.log
-*.pt
 .nextai_cache/
 .DS_Store
+.nextai_tokenizer_cache.json
+tokenizer_cache.pkl
+xtreme_data/
+nextai_checkpoints/
+multimodal_llm/
